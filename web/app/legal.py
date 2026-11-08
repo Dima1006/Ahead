@@ -69,6 +69,10 @@ async def account_export(request, conn):
         row = dict(o)
         row["items"] = [dict(i) for i in conn.execute("SELECT * FROM order_items WHERE order_id = ?", (o["id"],))]
         orders_out.append(row)
-    body = json.dumps({"account": profile, "orders": orders_out}, indent=2, ensure_ascii=False, default=str)
+    cards = [dict(r) for r in conn.execute(
+        "SELECT v.name AS venue_name, c.stamps, c.welcome_used FROM loyalty_cards c JOIN venues v ON v.id = c.venue_id "
+        "WHERE c.user_id = ? ORDER BY v.name", (user["id"],))]
+    body = json.dumps({"account": profile, "orders": orders_out, "loyalty_cards": cards},
+                      indent=2, ensure_ascii=False, default=str)
     return Response(body, media_type="application/json",
                     headers={"Content-Disposition": 'attachment; filename="my-data.json"'})

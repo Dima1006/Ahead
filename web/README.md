@@ -46,3 +46,6 @@ Panel → **Add-ons**: create groups (Milk, Syrup...) with options and extra pri
 All of it needs the `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (and `ADMIN_EMAIL`) secrets. For Gmail: host `smtp.gmail.com`, your address, and an **App Password**. After adding them open `/admin` and press **Send a test email**: it shows the exact error if something is wrong. Tests: `python3 -I tests/test_auth.py`.
 
 If SMTP is blocked on your network, use Brevo's HTTPS API instead: secrets `BREVO_API_KEY` and `MAIL_FROM` (an address verified as a sender in Brevo). The workflow file must pass them to the app (`BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}`).
+
+## Loyalty rewards
+Panel → **Settings → Loyalty**: a *welcome gift* (the first order of each new customer at this venue has one item free) and a *stamp card* (every N-th item free). The venue ticks which items count. The free item is the cheapest ticked item in the order (size included, add-ons paid) and is shown on the order, in the live board and in Telegram. A reward is used when the order is placed and given back if it is cancelled, declined or expires (not after a no-show); stamps are added only when the order is marked "Picked up". Customers see their cards in **My account**. Tests: `python3 -I tests/test_loyalty.py` (no HTTP client needed).

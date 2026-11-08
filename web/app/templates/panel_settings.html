@@ -12,6 +12,7 @@
     <a href="#photo">Photo</a>
     <a href="#details">Venue details</a>
     <a href="#ordering">Ordering</a>
+    <a href="#loyalty">Loyalty</a>
     <a href="#customers">Customers</a>
     <a href="#telegram">Telegram</a>
     <a href="#password">Password</a>
@@ -69,6 +70,34 @@
 
       <div class="savebar"><button class="btn">Save changes</button></div>
     </form>
+
+    <section class="card" id="loyalty">
+      <h2>Loyalty</h2>
+      <p class="muted small">Rewards for customers who order through the app. You decide which items can be free. The free item is the cheapest ticked item in the order (its size included, add-ons are paid). It is shown on the order, so you know not to charge for it.</p>
+      <form method="post" action="/panel/loyalty" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="check switch"><input type="checkbox" name="welcome_free" {{ 'checked' if venue.welcome_free else '' }}> Welcome gift: the first order of a new customer has one item free</label>
+        <p class="muted small">Once per customer at your venue. Only for customers who have never picked up an order here.</p>
+        <label>Stamp card
+          <select name="stamp_every">
+            {% for n in STAMP_CHOICES %}<option value="{{ n }}" {{ 'selected' if n == venue.stamp_every else '' }}>{{ "Off" if n == 0 else "Every " ~ n ~ "th item free" }}</option>{% endfor %}
+          </select>
+        </label>
+        <p class="muted small">Each ticked item a customer picks up adds a stamp. When the card is full, one item of the next order is free. Stamps are added only when you mark the order “Picked up”.</p>
+        {% if loyalty_menu %}
+        <fieldset class="loyalty-items">
+          <legend>Items that earn stamps and can be free</legend>
+          {% for cat in loyalty_menu %}
+          <p class="muted small">{{ cat.name }}</p>
+          {% for item in cat["items"] %}
+          <label class="check"><input type="checkbox" name="item_id" value="{{ item.id }}" {{ 'checked' if item.loyalty else '' }}> {{ item.name }}</label>
+          {% endfor %}
+          {% endfor %}
+        </fieldset>
+        {% else %}<p class="muted">Add items in Menu first.</p>{% endif %}
+        <button class="btn">Save loyalty</button>
+      </form>
+    </section>
 
     <section class="card" id="account">
       <h2>Login e-mail</h2>

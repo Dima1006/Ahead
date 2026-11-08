@@ -7,7 +7,7 @@ from . import config as cfg
 from .utils import normalize
 
 DB_PATH = os.getenv("DATABASE_PATH", str(Path(__file__).resolve().parent.parent / "data" / "app.db"))
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS venues (
     slot_capacity INTEGER NOT NULL DEFAULT 0, -- max active orders per arrival slot (0 = no limit)
     paused_until TEXT,                        -- UTC; short "we are swamped" pause
     image TEXT NOT NULL DEFAULT '',           -- file name in the uploads folder ('' = no photo)
+    welcome_free INTEGER NOT NULL DEFAULT 0,  -- loyalty: the first order of each customer here has one item free
+    stamp_every INTEGER NOT NULL DEFAULT 0,   -- loyalty: every N-th item is free (0 = no stamp card)
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -55,7 +57,8 @@ CREATE TABLE IF NOT EXISTS items (
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     is_available INTEGER NOT NULL DEFAULT 1,
-    image TEXT NOT NULL DEFAULT ''
+    image TEXT NOT NULL DEFAULT '',
+    loyalty INTEGER NOT NULL DEFAULT 0        -- earns stamps and can be the free item of a loyalty reward
 );
 
 -- One-time sign-in codes sent by e-mail (stored only as a keyed hash, never in clear text).
@@ -122,7 +125,12 @@ CREATE TABLE IF NOT EXISTS orders (
     arrival_minutes INTEGER NOT NULL,
     arrive_at TEXT NOT NULL,                  -- UTC moment the customer promised to arrive
     note TEXT NOT NULL DEFAULT '',
-    total INTEGER NOT NULL,
+    total INTEGER NOT NULL,                   -- to pay at the venue, after the loyalty discount
+    discount INTEGER NOT NULL DEFAULT 0,      -- loyalty: value of the free item (grosze)
+    reward TEXT NOT NULL DEFAULT '',          -- '' | welcome | stamp
+    reward_item TEXT NOT NULL DEFAULT '',     -- name of the free item (snapshot)
+    reward_cost INTEGER NOT NULL DEFAULT 0,   -- stamps spent, given back if the order does not happen
+    stamps_earned INTEGER NOT NULL DEFAULT 0, -- stamps added when the order is picked up
     status TEXT NOT NULL DEFAULT 'new',       -- new | preparing | ready | completed | declined | no_show | cancelled | expired
     decline_reason TEXT NOT NULL DEFAULT '',
     submit_key TEXT UNIQUE,                   -- one per order form: a double click cannot create two orders
@@ -140,6 +148,15 @@ CREATE TABLE IF NOT EXISTS order_items (
     option_ids TEXT NOT NULL DEFAULT '',      -- chosen add-on ids, "3,7"
     price INTEGER NOT NULL,                   -- per piece, add-ons included
     qty INTEGER NOT NULL
+);
+
+-- Loyalty card of one customer at one venue: stamps collected and whether the welcome gift was used.
+CREATE TABLE IF NOT EXISTS loyalty_cards (
+    venue_id INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stamps INTEGER NOT NULL DEFAULT 0,
+    welcome_used INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (venue_id, user_id)
 );
 
 -- Telegram: one-time codes that connect a chat to a venue, the connected chats,
@@ -201,6 +218,19 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+_ADDED_COLUMNS = (   # (table, column, definition) added after schema 5, applied to older databases
+    ("venues", "slot_capacity", "INTEGER NOT NULL DEFAULT 0"),
+    ("venues", "welcome_free", "INTEGER NOT NULL DEFAULT 0"),
+    ("venues", "stamp_every", "INTEGER NOT NULL DEFAULT 0"),
+    ("items", "loyalty", "INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "discount", "INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "reward", "TEXT NOT NULL DEFAULT ''"),
+    ("orders", "reward_item", "TEXT NOT NULL DEFAULT ''"),
+    ("orders", "reward_cost", "INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "stamps_earned", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+
 def init_db() -> None:
     conn = connect()
     try:
@@ -212,10 +242,10 @@ def init_db() -> None:
                 f"{DB_PATH} was created by an older version of this app (schema {version}, now {SCHEMA_VERSION}). "
                 "It only held demo data: delete the file and start again.")
         conn.execute("PRAGMA journal_mode = WAL")
-        if has_venues and version == 5:   # 5 -> 6 adds one column
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(venues)")}
-            if "slot_capacity" not in cols:
-                conn.execute("ALTER TABLE venues ADD COLUMN slot_capacity INTEGER NOT NULL DEFAULT 0")
+        if has_venues and version < SCHEMA_VERSION:   # 5 -> 6 -> 7 only add columns (new tables come from SCHEMA)
+            for table, column, ddl in _ADDED_COLUMNS:
+                if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
         conn.executescript(SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()

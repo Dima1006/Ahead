@@ -120,6 +120,21 @@
           stepBtn("−", k, -1, T("Remove one ") + label(line)), el("span", { textContent: line.q }),
           stepBtn("+", k, 1, T("Add one ") + label(line)))));
     }
+    // Loyalty: the cheapest marked item is free (size price only, add-ons are paid). The server checks it again.
+    let free = null;
+    if (menu.r) for (const line of Object.values(cart)) {
+      const v = menu.v[line.v];
+      if (v && v.f && (!free || v.price < free.price)) free = v;
+    }
+    const rewardEl = $("cart-reward");
+    if (rewardEl) {
+      rewardEl.hidden = !free;
+      if (free) {
+        total -= free.price;
+        $("cart-reward-name").textContent = "🎁 " + T("Free: ") + free.name + " (" + T(menu.r) + ")";
+        $("cart-reward-sum").textContent = "−" + money(free.price);
+      }
+    }
     $("cart-empty").hidden = count > 0;
     $("cart-total").textContent = money(total);
     const submit = $("submit-order"), json = $("cart-json"); // absent when the visitor is not logged in

@@ -57,6 +57,8 @@ def order_text(o: dict, venue_name: str) -> str:
     for it in o["items"]:
         label = f" ({e(it['variant_label'])})" if it["variant_label"] else ""
         lines.append(f"• {it['qty']} × {e(it['name'])}{label}, {format_zl(it['price'] * it['qty'])}")
+    if o.get("discount"):
+        lines.append(f"🎁 Free: {e(o['reward_item'])} ({e(o['reward_label'])}), −{format_zl(o['discount'])}")
     lines.append(f"\n<b>Total {format_zl(o['total'])}</b>, pay at the venue")
     if o["note"]:
         lines.append(f"📝 {e(o['note'])}")

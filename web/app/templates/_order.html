@@ -27,6 +27,7 @@
     {% for it in order["items"] %}
     <li><span>{{ it.qty }} × {{ it.name }}{% if it.variant_label %} ({{ it.variant_label }}){% endif %}</span><span>{{ (it.price * it.qty) | zl }}</span></li>
     {% endfor %}
+    {% with o = order %}{% include "_reward.html" %}{% endwith %}
   </ul>
   <p class="cart-total"><span>Total, pay at the venue</span><strong>{{ order.total | zl }}</strong></p>
   <p class="muted small">Order for {{ order.customer_name }}.</p>

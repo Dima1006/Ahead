@@ -20,6 +20,7 @@
           {% for it in o["items"] %}
           <li><span>{{ it.qty }} × {{ it.name }}{% if it.variant_label %} ({{ it.variant_label }}){% endif %}</span><span>{{ (it.price * it.qty) | zl }}</span></li>
           {% endfor %}
+          {% include "_reward.html" %}
         </ul>
         <p class="cart-total"><span>Total, pay at the venue</span><strong>{{ o.total | zl }}</strong></p>
         {% if o.note %}<p class="note">Note: {{ o.note }}</p>{% endif %}

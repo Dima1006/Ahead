@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import config as cfg
+from . import loyalty
 from .utils import format_zl, is_open_at, normalize, parse_hhmm
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -128,6 +129,7 @@ def hydrate(conn: sqlite3.Connection, rows) -> list[dict]:
         o["can_no_show"] = no_show_from <= now
         o["no_show_from"] = hhmm(no_show_from)
         o["can_cancel"] = o["status"] == "new"
+        o["reward_label"] = loyalty.REWARD_LABELS.get(o.get("reward") or "", "")
     return orders
 
 
@@ -202,7 +204,7 @@ def create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json: 
             WHERE i.venue_id = ? AND v.id IN ({','.join('?' * len(vids))})""",
         (venue["id"], *vids))}
     stale = "Some items in your cart are no longer available or their prices changed. Please review your order."
-    lines_to_save, total = [], 0
+    lines_to_save, total, priced_lines = [], 0, []
     for (vid, oids), qty in wanted.items():
         r = rows.get(vid)
         if not r or not r["is_available"]:
@@ -215,20 +217,28 @@ def create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json: 
         total += unit * qty
         shown = ", ".join([x for x in [r["label"], *names] if x])
         lines_to_save.append((r["name"], shown, r["label"], ",".join(map(str, oids)), unit, qty))
+        priced_lines.append({"item_id": r["item_id"], "name": r["name"], "base": r["price"], "qty": qty})
+    priced = loyalty.price_order(conn, venue, user["id"], priced_lines)
+    total -= priced["discount"]
     if total > cfg.MAX_ORDER_TOTAL:
         return None, f"An order can be at most {format_zl(cfg.MAX_ORDER_TOTAL)}. Please split it or call the venue."
     try:
         with conn:
             order_id = conn.execute(
-                "INSERT INTO orders (venue_id, user_id, customer_name, phone, arrival_minutes, arrive_at, note, total, submit_key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO orders (venue_id, user_id, customer_name, phone, arrival_minutes, arrive_at, note, total, submit_key, "
+                "discount, reward, reward_item, reward_cost, stamps_earned) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (venue["id"], user["id"], user["name"], user["phone"], arrival_minutes,
                  (now + timedelta(minutes=arrival_minutes)).strftime(UTC_FMT), note, total,
-                 submit_key or None)).lastrowid
+                 submit_key or None, priced["discount"], priced["reward"], priced["reward_item"],
+                 priced["reward_cost"], priced["stamps_earned"])).lastrowid
+            loyalty.take(conn, venue["id"], user["id"], priced)
             conn.executemany(
                 "INSERT INTO order_items (order_id, name, variant_label, size_label, option_ids, price, qty) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [(order_id, *line) for line in lines_to_save])
+    except loyalty.RewardTaken:   # the transaction was rolled back: nothing was saved
+        return None, "Your reward was just used by another order. Please review your order and send it again."
     except sqlite3.IntegrityError:  # lost a race on submit_key
         existing = conn.execute("SELECT id FROM orders WHERE submit_key = ?", (submit_key,)).fetchone()
         if existing:
@@ -304,6 +314,7 @@ def transition(conn, venue_id: int, order_id: int, new_status: str, reason: str 
             (new_status, reason, order_id, order["status"]))
         if cur.rowcount != 1:  # somebody else (web or Telegram) was faster
             return None, "This order was already updated."
+        loyalty.on_status(conn, order, new_status)
         if new_status == "no_show" and order["user_id"]:
             conn.execute(
                 """INSERT INTO venue_customer_flags (venue_id, user_id, warnings, blocked) VALUES (?, ?, 1, ?)
@@ -318,18 +329,22 @@ def cancel_by_customer(conn, user_id: int, order_id: int):
     with conn:
         cur = conn.execute("UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
                            "WHERE id = ? AND user_id = ? AND status = 'new'", (order_id, user_id))
+        if cur.rowcount == 1:
+            loyalty.on_status(conn, conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone(), "cancelled")
     return cur.rowcount == 1
 
 
 def expire_stale(conn) -> list[int]:
     """Close orders nobody handled: EXPIRE_AFTER_MIN after the promised arrival. No warning for anyone."""
     cutoff = (utcnow() - timedelta(minutes=cfg.EXPIRE_AFTER_MIN)).strftime(UTC_FMT)
-    ids = [r["id"] for r in conn.execute(
-        f"SELECT id FROM orders WHERE status IN {_ACTIVE_SQL} AND arrive_at < ?", (cutoff,))]
+    stale = conn.execute(f"SELECT * FROM orders WHERE status IN {_ACTIVE_SQL} AND arrive_at < ?", (cutoff,)).fetchall()
+    ids = [r["id"] for r in stale]
     if ids:
         with conn:
             conn.execute(f"UPDATE orders SET status = 'expired', updated_at = CURRENT_TIMESTAMP "
                          f"WHERE id IN ({','.join('?' * len(ids))}) AND status IN {_ACTIVE_SQL}", ids)
+            for r in stale:
+                loyalty.on_status(conn, r, "expired")
     conn.execute("DELETE FROM tg_link_codes WHERE expires_at < datetime('now')")
     conn.commit()
     return ids

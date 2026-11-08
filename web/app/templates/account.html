@@ -7,6 +7,18 @@
   {% else %}<div class="notice">{{ f.venue_name }}: {{ f.warnings }} no-show warning. After {{ max_no_shows }} the venue stops taking your orders.</div>{% endif %}
 {% endfor %}
 
+{% if cards %}
+<section class="card">
+  <h2>Stamp cards</h2>
+  <ul class="history">
+    {% for c in cards %}
+    <li><a href="/v/{{ c.slug }}">{{ c.name }}</a>
+      <span>{% if c.ready %}<strong>🎁 Next item free</strong>{% else %}<span class="stamp-dots" aria-hidden="true">{{ "●" * c.stamps }}{{ "○" * (c.stamp_every - c.stamps) }}</span> <span class="muted">{{ c.stamps }} of {{ c.stamp_every }} stamps</span>{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <div class="two-col">
 <section>
   <h2>Your details</h2>

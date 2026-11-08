@@ -45,8 +45,8 @@ def seed_demo() -> None:
             ).lastrowid
             for name, prices in items.items():
                 item_id = conn.execute(
-                    "INSERT INTO items (venue_id, category_id, name) VALUES (?, ?, ?)",
-                    (venue_id, cat_id, name),
+                    "INSERT INTO items (venue_id, category_id, name, loyalty) VALUES (?, ?, ?, ?)",
+                    (venue_id, cat_id, name, int(category == "Coffee")),   # ready for Settings → Loyalty
                 ).lastrowid
                 variants = prices.items() if isinstance(prices, dict) else [("", prices)]
                 for label, zl in variants:

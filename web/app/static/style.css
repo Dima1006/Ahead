@@ -435,3 +435,13 @@ input[type=checkbox], input[type=radio] { accent-color: var(--brand); }
 label.check{display:flex;gap:.6rem;align-items:flex-start;font-weight:400}
 label.check input{width:auto;margin-top:.25rem;flex:none}
 .langs{margin-left:.8rem;white-space:nowrap}
+
+/* loyalty rewards */
+.notice.ok { border-left-color: #2e7d4f; }
+.bonus-tag { margin-left: 6px; font-size: .9em; }
+.cart-reward { display: flex; justify-content: space-between; gap: 12px; margin: 8px 0 0; color: #2e7d4f; }
+.lines li.reward { color: #2e7d4f; }
+.loyalty-items { border: 0; padding: 0; margin: 0; }
+.loyalty-items legend { font-weight: 600; margin-bottom: 4px; }
+.loyalty-items label.check { display: inline-flex; margin: 0 16px 6px 0; }
+.stamp-dots { letter-spacing: 2px; }

@@ -128,6 +128,7 @@ routes = [
     Route("/panel/email", web_venue.change_email, methods=P),
     Route("/panel/settings/save", web_venue.save_settings, methods=P),
     Route("/panel/password", web_venue.panel_password, methods=P),
+    Route("/panel/loyalty", web_venue.save_loyalty, methods=P),
     Route("/panel/customers/{user_id:int}/reset", web_venue.reset_customer, methods=P),
     Route("/panel/telegram/link", web_venue.telegram_link, methods=P),
     Route("/panel/telegram/{chat_pk:int}/disconnect", web_venue.telegram_disconnect, methods=P),

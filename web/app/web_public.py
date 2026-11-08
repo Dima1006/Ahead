@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException
 from starlette.responses import RedirectResponse
 
 from . import config as cfg
+from . import loyalty
 from . import events, orders
 from .core import admin_ok, current_user, current_venue, go, read_form, render, route
 from .security import limiter
@@ -114,13 +115,18 @@ def venue_context(request, conn, venue, form=None, reorder=None):
     for c in menu:
         for i in c["items"]:
             i["group_ids"] = item_groups.get(i["id"], [])
+    user = current_user(request)
+    bonus_on = loyalty.enabled(venue) and any(i["loyalty"] for c in menu for i in c["items"])
+    reward = loyalty.available_reward(conn, venue, user["id"]) if (user and bonus_on) else ""
+    stamp_card = loyalty.card(conn, venue["id"], user["id"]) if (user and bonus_on and venue["stamp_every"]) else None
     menu_data = {
-        "v": {str(v["id"]): {"name": i["name"], "label": v["label"], "price": v["price"], "g": i["group_ids"]}
+        "v": {str(v["id"]): {"name": i["name"], "label": v["label"], "price": v["price"], "g": i["group_ids"],
+                             **({"f": 1} if bonus_on and i["loyalty"] else {})}
               for c in menu for i in c["items"] if i["is_available"] for v in i["variants"]},
+        "r": loyalty.REWARD_LABELS.get(reward, ""),
         "g": {str(g["id"]): {"name": g["name"], "required": bool(g["required"]), "multi": bool(g["multi"]),
                              "options": [{"id": o["id"], "name": o["name"], "price": o["price"]} for o in g["options"]]}
               for g in groups.values()}}
-    user = current_user(request)
     minutes = [m for m, _ in options]
     wanted = (form or {}).get("arrival")
     default_arrival = wanted if wanted in minutes else (15 if 15 in minutes else (minutes[0] if minutes else 0))
@@ -128,6 +134,7 @@ def venue_context(request, conn, venue, form=None, reorder=None):
                 can_order=ok and bool(options), closed_reason=why, arrival_options=options,
                 default_arrival=default_arrival, submit_key=secrets.token_urlsafe(16),
                 hours=orders.hours_text(venue), reorder=reorder,
+                bonus_on=bonus_on, reward=reward, stamps=(stamp_card["stamps"] if stamp_card else 0),
                 needs_verification=bool(user and not user["email_verified"] and cfg.VERIFY_REQUIRED))
 
 

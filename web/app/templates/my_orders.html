@@ -17,7 +17,7 @@
           <span class="muted small">#{{ o.id }} · {{ o.created_date }}, {{ o.created_local }}</span>
         </span>
         <span class="badge status-{{ o.status }}">{{ o.status_label }}</span>
-        <strong class="ototal">{{ o.total | zl }}</strong>
+        <strong class="ototal">{% if o.discount %}<span title="Includes a free item">🎁 </span>{% endif %}{{ o.total | zl }}</strong>
         <span class="chev" aria-hidden="true"></span>
       </summary>
       <div class="obody">
@@ -25,6 +25,7 @@
           {% for it in o["items"] %}
           <li><span>{{ it.qty }} × {{ it.name }}{% if it.variant_label %} <span class="muted">({{ it.variant_label }})</span>{% endif %}</span><span>{{ (it.price * it.qty) | zl }}</span></li>
           {% endfor %}
+          {% include "_reward.html" %}
         </ul>
         <p class="muted small">Pick-up around {{ o.arrival_local }}{% if o.note %} · Your note: {{ o.note }}{% endif %}{% if o.decline_reason %} · Reason: {{ o.decline_reason }}{% endif %}</p>
         <div class="oactions">

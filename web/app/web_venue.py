@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException
 from starlette.websockets import WebSocket
 
 from . import config as cfg
-from . import events, orders, realtime
+from . import events, loyalty, orders, realtime
 from .core import (go, hash_async, login_session, read_form, render, require_venue, route, verify_async, ws_venue)
 from .legal import CAPTCHA_ERROR, captcha_ok
 from .mail import public_url, send_mail_bg
@@ -434,7 +434,9 @@ async def panel_settings(request, conn):
     link = None
     if code and cfg.TELEGRAM_BOT_USERNAME:
         link = f"https://t.me/{cfg.TELEGRAM_BOT_USERNAME}?start={code['code']}"
+    loyalty_menu = [c for c in load_menu(conn, venue["id"]) if c["items"]]
     return render(request, "panel_settings.html", venue=venue, chats=chats, tg_link=link, flags=flags,
+                  loyalty_menu=loyalty_menu, STAMP_CHOICES=loyalty.STAMP_CHOICES,
                   tg_enabled=bool(cfg.TELEGRAM_BOT_TOKEN), tg_ready=bool(cfg.TELEGRAM_BOT_USERNAME),
                   PREP_CHOICES=PREP_CHOICES, max_no_shows=cfg.MAX_NO_SHOWS, grace=cfg.NO_SHOW_GRACE_MIN)
 
@@ -491,6 +493,32 @@ async def save_settings(request, conn):
              open_t, close_t, prep, max_active, slot_cap, venue["id"]))
     invalidate_index()
     return go(request, "/panel/settings", msg="Saved.")
+
+
+@route
+async def save_loyalty(request, conn):
+    form = await read_form(request)
+    venue = require_venue(request)
+    welcome = 1 if form.get("welcome_free") else 0
+    try:
+        every = int(str(form.get("stamp_every", "0")).strip() or 0)
+    except ValueError:
+        every = -1
+    if every not in loyalty.STAMP_CHOICES:
+        return go(request, "/panel/settings#loyalty", error="Choose the stamp card size from the list.")
+    own = {r["id"] for r in conn.execute("SELECT id FROM items WHERE venue_id = ?", (venue["id"],))}
+    chosen = set()
+    for raw in form.getlist("item_id"):
+        if str(raw).isdigit() and int(raw) in own:   # ids of other venues are ignored
+            chosen.add(int(raw))
+    if (welcome or every) and not chosen:
+        return go(request, "/panel/settings#loyalty",
+                  error="Tick at least one item that can be free, otherwise the rewards cannot work.")
+    with conn:
+        conn.execute("UPDATE venues SET welcome_free = ?, stamp_every = ? WHERE id = ?", (welcome, every, venue["id"]))
+        conn.execute("UPDATE items SET loyalty = 0 WHERE venue_id = ?", (venue["id"],))
+        conn.executemany("UPDATE items SET loyalty = 1 WHERE id = ? AND venue_id = ?", [(i, venue["id"]) for i in chosen])
+    return go(request, "/panel/settings#loyalty", msg="Loyalty settings saved.")
 
 
 @route

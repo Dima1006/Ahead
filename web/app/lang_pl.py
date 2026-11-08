@@ -266,3 +266,35 @@ PL.update({
 })
 PL["Used by {} item{}."] = lambda n, s: f"Używane w pozycjach: {n}."
 PL["{} order{} found"] = lambda n, s: f"Znalezione zamówienia: {n}"
+
+# ---- loyalty rewards
+PL.update({
+    "Loyalty": "Lojalność", "Stamp card": "Karta z pieczątkami", "Off": "Wyłączona",
+    "Every {}th item free": "Co {}. pozycja gratis", "Every {}th 🎁 item free": "Co {}. pozycja 🎁 gratis",
+    "Rewards for customers who order through the app. You decide which items can be free. The free item is the cheapest ticked item in the order (its size included, add-ons are paid). It is shown on the order, so you know not to charge for it.":
+        "Nagrody dla klientów, którzy zamawiają przez aplikację. Ty decydujesz, które pozycje mogą być gratis. Gratis jest najtańsza zaznaczona pozycja w zamówieniu (z rozmiarem, dodatki są płatne). Widać to w zamówieniu, więc wiesz, żeby za nią nie pobierać opłaty.",
+    "Welcome gift: the first order of a new customer has one item free":
+        "Prezent powitalny: w pierwszym zamówieniu nowego klienta jedna pozycja jest gratis",
+    "Once per customer at your venue. Only for customers who have never picked up an order here.":
+        "Raz na klienta w Twoim lokalu. Tylko dla klientów, którzy nigdy nie odebrali tu zamówienia.",
+    "Each ticked item a customer picks up adds a stamp. When the card is full, one item of the next order is free. Stamps are added only when you mark the order “Picked up”.":
+        "Każda odebrana zaznaczona pozycja to jedna pieczątka. Gdy karta jest pełna, jedna pozycja następnego zamówienia jest gratis. Pieczątki są dodawane dopiero, gdy oznaczysz zamówienie jako „Odebrane”.",
+    "Items that earn stamps and can be free": "Pozycje, które dają pieczątki i mogą być gratis",
+    "Add items in Menu first.": "Najpierw dodaj pozycje w Menu.", "Save loyalty": "Zapisz ustawienia lojalności",
+    "Choose the stamp card size from the list.": "Wybierz rozmiar karty z listy.",
+    "Tick at least one item that can be free, otherwise the rewards cannot work.":
+        "Zaznacz co najmniej jedną pozycję, która może być gratis, inaczej nagrody nie zadziałają.",
+    "Loyalty settings saved.": "Ustawienia lojalności zapisane.",
+    "🎁 Free: {}": "🎁 Gratis: {}", "(Welcome gift)": "(Prezent powitalny)", "(Loyalty card reward)": "(Nagroda z karty lojalnościowej)",
+    "Includes a free item": "Zawiera pozycję gratis", "Counts for the loyalty rewards": "Liczy się do nagród lojalnościowych",
+    "Rewards": "Nagrody", "First order: one 🎁 item free": "Pierwsze zamówienie: jedna pozycja 🎁 gratis",
+    "🎁 One item marked 🎁 in your next order here is free: your welcome gift.":
+        "🎁 Jedna pozycja oznaczona 🎁 w Twoim następnym zamówieniu tutaj jest gratis: Twój prezent powitalny.",
+    "🎁 One item marked 🎁 in your next order here is free: your stamp card is full.":
+        "🎁 Jedna pozycja oznaczona 🎁 w Twoim następnym zamówieniu tutaj jest gratis: Twoja karta z pieczątkami jest pełna.",
+    "Your stamp card here: {} of {}.": "Twoja karta z pieczątkami tutaj: {} z {}.",
+    "Your reward was just used by another order. Please review your order and send it again.":
+        "Twoja nagroda została właśnie użyta w innym zamówieniu. Sprawdź zamówienie i wyślij je ponownie.",
+    "Stamp cards": "Karty z pieczątkami", "🎁 Next item free": "🎁 Następna pozycja gratis",
+    "{} of {} stamps": "{} z {} pieczątek",
+})

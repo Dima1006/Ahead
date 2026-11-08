@@ -11,6 +11,7 @@ from starlette.responses import RedirectResponse
 from starlette.websockets import WebSocket
 
 from . import config as cfg
+from . import loyalty
 from . import google, orders, realtime
 from .core import (current_user, go, hash_async, login_session, read_form, render, require_user, route,
                    verify_async, ws_user)
@@ -347,7 +348,8 @@ async def account(request, conn):
     flags = conn.execute(
         "SELECT f.warnings, f.blocked, v.name AS venue_name FROM venue_customer_flags f "
         "JOIN venues v ON v.id = f.venue_id WHERE f.user_id = ? AND f.warnings > 0 ORDER BY v.name", (user["id"],)).fetchall()
-    return render(request, "account.html", user=user, flags=flags, max_no_shows=cfg.MAX_NO_SHOWS)
+    return render(request, "account.html", user=user, flags=flags, max_no_shows=cfg.MAX_NO_SHOWS,
+                  cards=loyalty.user_cards(conn, user["id"]))
 
 
 @route

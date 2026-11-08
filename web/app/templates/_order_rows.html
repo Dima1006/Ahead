@@ -10,13 +10,14 @@
         <span class="rname">{{ o.customer_name }}</span>
         <span class="muted rdate">{{ o.created_date }} {{ o.created_local }}</span>
         <span class="badge status-{{ o.status }}">{{ o.status_label }}</span>
-        <strong class="rtotal">{{ o.total | zl }}</strong>
+        <strong class="rtotal">{% if o.discount %}<span title="Includes a free item">🎁 </span>{% endif %}{{ o.total | zl }}</strong>
       </summary>
       <div class="rbody">
         <ul class="lines">
           {% for it in o["items"] %}
           <li><span>{{ it.qty }} × {{ it.name }}{% if it.variant_label %} ({{ it.variant_label }}){% endif %}</span><span>{{ (it.price * it.qty) | zl }}</span></li>
           {% endfor %}
+          {% include "_reward.html" %}
         </ul>
         <p class="muted">Arrival: {{ o.arrival_local }} (+{{ o.arrival_minutes }} min){% if o.phone %} · Phone: {{ o.phone }}{% endif %}</p>
         {% if o.note %}<p class="note">Note: {{ o.note }}</p>{% endif %}

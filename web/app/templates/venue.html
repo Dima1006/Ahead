@@ -13,6 +13,7 @@
       {% if where %}<div><dt>Address</dt><dd>{{ where }}</dd></div>{% endif %}
       {% if venue.status == "approved" %}<div><dt>Hours</dt><dd>{{ hours }}</dd></div>{% endif %}
       <div><dt>Pay</dt><dd>At the venue, when you pick up</dd></div>
+      {% if bonus_on %}<div><dt>Rewards</dt><dd>{% if venue.welcome_free %}<span>First order: one 🎁 item free</span>{% endif %}{% if venue.welcome_free and venue.stamp_every %} · {% endif %}{% if venue.stamp_every %}<span>Every {{ venue.stamp_every }}th 🎁 item free</span>{% endif %}</dd></div>{% endif %}
     </dl>
     {% if venue.description %}<p class="vdesc">{{ venue.description }}</p>{% endif %}
   </div>
@@ -20,6 +21,9 @@
 
 {% if venue.status != "approved" %}<div class="notice">Preview: this page is not public yet{% if venue.status == "pending" %}, it is waiting for approval{% endif %}. Ordering is disabled.</div>
 {% elif not can_order %}<div class="notice">{{ closed_reason }} You can still look at the menu.</div>{% endif %}
+
+{% if me and reward %}<div class="notice ok">🎁 One item marked 🎁 in your next order here is free: {{ "your welcome gift" if reward == "welcome" else "your stamp card is full" }}.</div>
+{% elif me and bonus_on and venue.stamp_every %}<div class="notice">Your stamp card here: {{ stamps }} of {{ venue.stamp_every }}.</div>{% endif %}
 
 <div class="venue-layout">
   <div class="menu">
@@ -39,19 +43,19 @@
           {% if not item.is_available %}
           <div class="irow">
             {{ head(item) }}
-            <div class="iinfo"><strong class="iname">{{ item.name }}</strong>{% if item.description %}<span class="idesc">{{ item.description }}</span>{% endif %}<span class="iprice muted">Sold out</span></div>
+            <div class="iinfo"><strong class="iname">{{ item.name }}</strong>{% if bonus_on and item.loyalty %}<span class="bonus-tag" title="Counts for the loyalty rewards">🎁</span>{% endif %}{% if item.description %}<span class="idesc">{{ item.description }}</span>{% endif %}<span class="iprice muted">Sold out</span></div>
           </div>
           {% elif vs | length == 1 %}
           <div class="irow">
             {{ head(item) }}
-            <div class="iinfo"><strong class="iname">{{ item.name }}</strong>{% if item.description %}<span class="idesc">{{ item.description }}</span>{% endif %}<span class="iprice">{{ vs[0].price | zl }}</span></div>
+            <div class="iinfo"><strong class="iname">{{ item.name }}</strong>{% if bonus_on and item.loyalty %}<span class="bonus-tag" title="Counts for the loyalty rewards">🎁</span>{% endif %}{% if item.description %}<span class="idesc">{{ item.description }}</span>{% endif %}<span class="iprice">{{ vs[0].price | zl }}</span></div>
             <span class="ctl" data-variant="{{ vs[0].id }}"></span>
           </div>
           {% else %}
           <details class="multi">
             <summary class="irow">
               {{ head(item) }}
-              <div class="iinfo"><strong class="iname">{{ item.name }}</strong>{% if item.description %}<span class="idesc">{{ item.description }}</span>{% endif %}<span class="iprice"><span class="muted">from</span> {{ (vs | map(attribute='price') | min) | zl }}</span></div>
+              <div class="iinfo"><strong class="iname">{{ item.name }}</strong>{% if bonus_on and item.loyalty %}<span class="bonus-tag" title="Counts for the loyalty rewards">🎁</span>{% endif %}{% if item.description %}<span class="idesc">{{ item.description }}</span>{% endif %}<span class="iprice"><span class="muted">from</span> {{ (vs | map(attribute='price') | min) | zl }}</span></div>
               <span class="incart" hidden></span>
               <span class="chev" aria-hidden="true"></span>
             </summary>
@@ -79,6 +83,7 @@
     <h2>Your order</h2>
     <p class="muted" id="cart-empty">Nothing here yet. Open a category and add something.</p>
     <ul id="cart-lines" class="cart-lines"></ul>
+    <p class="cart-reward" id="cart-reward" hidden><span id="cart-reward-name"></span><strong id="cart-reward-sum"></strong></p>
     <p class="cart-total"><span>Total</span><strong id="cart-total">0,00 zł</strong></p>
 
     {% if me %}
