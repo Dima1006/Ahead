@@ -21,14 +21,43 @@ jobs:
       - name: Install dependencies
         run: pip install -r web/requirements.txt
 
-      - name: Open a public tunnel
+      # The cloudflared binary is cached after the first good download, so a GitHub download hiccup
+      # (504/502) does not stop the demo. The checksum below is checked every time, cached or not.
+      - name: Restore cloudflared from cache
+        id: cf-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cloudflared-bin
+          key: cloudflared-2026.10.7-linux-amd64
+
+      - name: Download cloudflared
         run: |
           # Pinned version + checksum: this job holds every secret, so never run an unverified binary.
-          # To update: take the version and the "cloudflared-linux-amd64:" hash from the release notes.
+          # To update: take the version and the "cloudflared-linux-amd64:" hash from the release notes,
+          # and change the cache key above to the same version.
           CLOUDFLARED_VERSION=2026.10.7
           CLOUDFLARED_SHA256=1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872
-          curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" -o cloudflared
-          echo "${CLOUDFLARED_SHA256}  cloudflared" | sha256sum -c -
+          mkdir -p cloudflared-bin
+          if ! echo "${CLOUDFLARED_SHA256}  cloudflared-bin/cloudflared" | sha256sum -c - 2>/dev/null; then
+            # Retry: GitHub release downloads sometimes answer 502/504 for a minute or two.
+            curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors --connect-timeout 20 \
+              "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" \
+              -o cloudflared-bin/cloudflared
+            echo "${CLOUDFLARED_SHA256}  cloudflared-bin/cloudflared" | sha256sum -c -
+          fi
+
+      # Saved right away: the demo is usually stopped by cancelling, and a cancelled job saves no cache at the end.
+      - name: Save cloudflared to cache
+        if: steps.cf-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cloudflared-bin
+          key: cloudflared-2026.10.7-linux-amd64
+
+      - name: Open a public tunnel
+        run: |
+          echo "1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872  cloudflared-bin/cloudflared" | sha256sum -c -
+          cp cloudflared-bin/cloudflared ./cloudflared
           chmod +x cloudflared
           nohup ./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 > tunnel.log 2>&1 &
           URL=""
