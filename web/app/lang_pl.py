@@ -80,8 +80,8 @@ PL = {
     "Your cart could not be read. Please try again.": "Nie udało się odczytać koszyka. Spróbuj ponownie.",
     "Some items in your cart are no longer available or their prices changed. Please review your order.":
         "Niektóre pozycje w koszyku są niedostępne lub zmieniły się ich ceny. Sprawdź zamówienie.",
-    "Some choices (milk, syrup...) are missing or no longer available. Please review your order.":
-        "Brakuje niektórych wyborów (mleko, syrop...) lub są już niedostępne. Sprawdź zamówienie.",
+    "Some choices (size, add-ons...) are missing or no longer available. Please review your order.":
+        "Brakuje niektórych wyborów (rozmiar, dodatki...) lub są już niedostępne. Sprawdź zamówienie.",
     "Too many orders in a short time. Please wait a few minutes.": "Zbyt wiele zamówień w krótkim czasie. Poczekaj kilka minut.",
     "Please confirm your email address first (we sent you a link). You can resend it in My account.":
         "Najpierw potwierdź adres e-mail (wysłaliśmy Ci link). Możesz go wysłać ponownie w sekcji Moje konto.",

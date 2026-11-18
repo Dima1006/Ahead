@@ -25,7 +25,18 @@ Open http://127.0.0.1:8000. Admin: `/admin`. Run one process only (no `--workers
 | `TELEGRAM_BOT_TOKEN` | Create a bot with @BotFather. Venues connect chats in Settings → Telegram. |
 | `TRUST_PROXY=1` | Only behind Cloudflare: real client IP from `CF-Connecting-IP` (for rate limits). Behind another proxy use `uvicorn --proxy-headers` instead. |
 | `DEMO_MODE=1` | Demo only: no e-mail confirmation needed to order. |
+| `DEMO_SEED=1` | Creates three ready demo venues with full menus (see below). `DEMO_PASSWORD` sets their password, otherwise a random one is printed in the log. |
 | `DATABASE_PATH` | SQLite file (default `web/data/app.db`). |
+
+## Demo venues
+With `DEMO_SEED=1` the site starts with three approved venues, so every kind of venue can be shown to an owner right away.
+They are created once; restarting does not duplicate them. The menus are in `app/seed.py`.
+
+| Venue | Page | Venue login | What it shows |
+| --- | --- | --- | --- |
+| Wood Coffee | `/v/wood-coffee` | `demo@woodcoffee.pl` | Sizes, loyalty on coffee, 5 min prep |
+| Bella Napoli (pizzeria) | `/v/bella-napoli` | `demo-pizza@woodcoffee.pl` | 32/40 cm sizes, paid extra toppings, 20 min prep |
+| Sushi Hana | `/v/sushi-hana` | `demo-sushi@woodcoffee.pl` | Sets, required chopsticks choice, paid sauces, 30 min prep |
 
 ## GitHub Actions demo
 Actions → **Run web demo**. The URL is in the run summary. Add secrets `ADMIN_PASSWORD` (required to approve venues), and optionally `DEMO_PASSWORD`, `SECRET_KEY`, `TELEGRAM_BOT_TOKEN`, `ADMIN_EMAIL`, `SMTP_*`.

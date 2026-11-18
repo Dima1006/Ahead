@@ -56,7 +56,7 @@ with TestClient(app, base_url=B, headers={"accept-language": "en"}) as e:
     e.get("/lang/en?next=/"); assert "Order ahead." in e.get("/").text
     assert e.get("/lang/xx", follow_redirects=False).status_code == 404
 
-skip = re.compile(r"^(Ahead|English|Polski|/.*|#\d+ .*|ul\. .*|Milk drinks|Small|Medium|Large|Americano|Black Tea|Green Tea|Cocoa|Milkshake|Strawberry|Chocolate|Cheesecake|Demo venue.*|Wood Coffee,.*|\d+ × .*|.* · Ahead|.*\d zł.*|Wood Coffee|Nowa Kawa|Ola|Latte|Cappuccino|Flat white|Espresso|Croissant|Coffee|Tea|Desserts|Pastries|[\W\d]*|.*@.*)$")
+skip = re.compile(r"^(Ahead|English|Polski|/.*|#\d+ .*|ul\. .*|Milk drinks|Small|Medium|Large|Americano|Black Tea|Green Tea|Cocoa|Milkshake|Strawberry|Chocolate|Cheesecake|Demo venue.*|Wood Coffee,.*|\d+ × .*|.* · Ahead|.*\d zł.*|Wood Coffee|Bella Napoli|Sushi Hana|Nowa Kawa|Ola|Latte|Cappuccino|Flat white|Espresso|Croissant|Coffee|Tea|Desserts|Pastries|[\W\d]*|.*@.*)$")
 bad = {t: p for t, p in MISSING.items() if not skip.match(t)}
 for t, p in sorted(bad.items(), key=lambda x: x[1]): print(f"{p}\t{t}")
 print("MISSING:", len(bad))

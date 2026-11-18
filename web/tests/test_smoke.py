@@ -122,14 +122,15 @@ with TestClient(app, base_url="https://testserver") as c:
     assert a.get("/admin", follow_redirects=False).status_code in (302, 303)
     a.post("/admin/login", data={"csrf": csrf(a, "/admin/login"), "password": "adminpass-123"})
     ac = csrf(a, "/admin")
-    a.post("/admin/venues/2/approve", data={"csrf": ac}, follow_redirects=False)
-    assert one("SELECT status FROM venues WHERE id=2")["status"] == "pending"   # empty venue cannot be approved
-    sql("UPDATE venues SET address='Piotrkowska 1' WHERE id=2")
-    sql("INSERT INTO categories (venue_id, name) VALUES (2, 'Coffee')")
-    cat = one("SELECT id FROM categories WHERE venue_id=2")["id"]
-    sql("INSERT INTO items (venue_id, category_id, name, is_available) VALUES (2, ?, 'Espresso', 1)", cat)
-    assert a.post("/admin/venues/2/approve", data={"csrf": ac}, follow_redirects=False).status_code == 303
-    assert one("SELECT status FROM venues WHERE id=2")["status"] == "approved"
+    nid = one("SELECT id FROM venues WHERE email='cafe@example.pl'")["id"]   # after the demo venues
+    a.post(f"/admin/venues/{nid}/approve", data={"csrf": ac}, follow_redirects=False)
+    assert one(f"SELECT status FROM venues WHERE id={nid}")["status"] == "pending"   # empty venue cannot be approved
+    sql(f"UPDATE venues SET address='Piotrkowska 1' WHERE id={nid}")
+    sql(f"INSERT INTO categories (venue_id, name) VALUES ({nid}, 'Coffee')")
+    cat = one(f"SELECT id FROM categories WHERE venue_id={nid}")["id"]
+    sql(f"INSERT INTO items (venue_id, category_id, name, is_available) VALUES ({nid}, ?, 'Espresso', 1)", cat)
+    assert a.post(f"/admin/venues/{nid}/approve", data={"csrf": ac}, follow_redirects=False).status_code == 303
+    assert one(f"SELECT status FROM venues WHERE id={nid}")["status"] == "approved"
     assert v2.post(f"/panel/orders/{oid2}/status", data={"csrf": csrf(v2, "/panel"), "status": "preparing"}).status_code == 404
 
     # --- websockets: auth + same origin

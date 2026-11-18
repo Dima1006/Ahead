@@ -73,7 +73,10 @@ jobs:
             echo "$URL"
             echo ""
             echo "Customers: sign up on the site. Venues: /venue/register, approve them at /admin (ADMIN_PASSWORD secret)."
-            echo "Demo venue login: demo@woodcoffee.pl (password: DEMO_PASSWORD secret, or see the log of the next step)"
+            echo "Demo venue logins (password: DEMO_PASSWORD secret, or see the log of the next step):"
+            echo "- Wood Coffee: demo@woodcoffee.pl  ($URL/v/wood-coffee)"
+            echo "- Bella Napoli (pizza): demo-pizza@woodcoffee.pl  ($URL/v/bella-napoli)"
+            echo "- Sushi Hana: demo-sushi@woodcoffee.pl  ($URL/v/sushi-hana)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Start the site

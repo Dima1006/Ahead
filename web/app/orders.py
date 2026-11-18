@@ -211,7 +211,7 @@ def create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json: 
             return None, stale
         checked = check_options(conn, venue["id"], r["item_id"], oids)
         if checked is None:
-            return None, "Some choices (milk, syrup...) are missing or no longer available. Please review your order."
+            return None, "Some choices (size, add-ons...) are missing or no longer available. Please review your order."
         names, extra = checked
         unit = r["price"] + extra
         total += unit * qty
