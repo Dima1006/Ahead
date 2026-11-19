@@ -30,8 +30,8 @@ Python 3.12, Starlette + uvicorn, Jinja2 templates, SQLite, WebSockets, Pillow f
 ## Quick start
 
 ```bash
-git clone https://github.com/Dima1006/Online-Order.git
-cd Online-Order/web
+git clone https://github.com/Dima1006/Ahead.git
+cd Ahead/web
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 DEMO_SEED=1 DEMO_MODE=1 ADMIN_PASSWORD=change-me-please uvicorn app.main:app --reload
