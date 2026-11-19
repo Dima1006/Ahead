@@ -4,7 +4,7 @@
 
 Ahead grew out of the *Wood Coffee* Telegram bot and is aimed at small venues in Poland that do not have a pickup ordering system: cafés first, but pizzerias and sushi places work the same way.
 
-> Status: MVP. It is used for demos and a free pilot with real venues; online payments are planned for later (see the [roadmap](docs/ROADMAP.md)).
+> Status: MVP. It is used for demos and a free pilot with real venues; online payments are planned for later.
 
 ## What it does
 
@@ -78,7 +78,6 @@ web/            the application
   tests/        test scripts
   Dockerfile
   SECURITY.md   security review and known limits
-docs/ROADMAP.md what is built and what comes next
 .github/        demo workflow
 ```
 
@@ -86,4 +85,3 @@ docs/ROADMAP.md what is built and what comes next
 
 - [web/README.md](web/README.md): detailed setup, settings, demo venues, e-mail and loyalty
 - [web/SECURITY.md](web/SECURITY.md): security notes and known limits
-- [docs/ROADMAP.md](docs/ROADMAP.md): roadmap (in Russian)
