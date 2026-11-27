@@ -79,7 +79,7 @@
       if (!menu.v[v]) return;
       if (hasGroups(v)) {          // needs choices: opens the add-on dialog
         const n = Object.values(cart).filter((l) => l.v === v).reduce((s, l) => s + l.q, 0);
-        const b = el("button", { type: "button", className: "add", textContent: n ? "Add (" + n + ")" : "Add" });
+        const b = el("button", { type: "button", className: "add", textContent: n ? T("Add") + " (" + n + ")" : T("Add") });
         b.dataset.options = v; b.disabled = !isOpen;
         b.setAttribute("aria-label", T("Choose options for ") + menu.v[v].name);
         ctl.className = "ctl"; ctl.append(b);
@@ -87,7 +87,7 @@
       }
       const k = lineKey(v, []), qty = cart[k] ? cart[k].q : 0;
       if (!qty) {
-        const b = stepBtn("Add", k, 1, "Add " + menu.v[v].name);
+        const b = stepBtn(T("Add"), k, 1, T("Add") + " " + menu.v[v].name);
         b.className = "add"; b.disabled = !isOpen;
         ctl.className = "ctl"; ctl.append(b);
       } else {
@@ -102,7 +102,7 @@
       const ids = li.dataset.variants.split(",").map(Number);
       const n = Object.values(cart).filter((l) => ids.includes(l.v)).reduce((s, l) => s + l.q, 0);
       badge.hidden = n === 0;
-      badge.textContent = n + " in order";
+      badge.textContent = n + " " + T("in order");
     });
   }
 
@@ -141,7 +141,7 @@
     if (submit) submit.disabled = count === 0 || !isOpen;
     if (json) json.value = JSON.stringify(Object.values(cart).map((l) => ({ variant_id: l.v, qty: l.q, options: l.o })));
     $("cart-bar").hidden = count === 0;
-    $("cart-bar-count").textContent = count + (count === 1 ? " item" : " items");
+    $("cart-bar-count").textContent = T("Items: ") + count;
     $("cart-bar-total").textContent = money(total);
     renderControls();
   }
@@ -156,7 +156,7 @@
     box.replaceChildren();
     info.g.forEach((gid) => {
       const g = menu.g[gid];
-      const set = el("fieldset", {}, el("legend", { textContent: g.name + (g.required ? "" : " (optional)") }));
+      const set = el("fieldset", {}, el("legend", { textContent: g.name + (g.required ? "" : " " + T("(optional)")) }));
       const type = g.multi ? "checkbox" : "radio";
       const add = (value, text, price, checked) => {
         const input = el("input", { type, name: "g" + gid, value, checked });
@@ -164,7 +164,7 @@
         set.append(el("label", { className: "opt" }, input, el("span", { textContent: text }),
           el("em", { textContent: price ? "+" + money(price) : "" })));
       };
-      if (!g.multi && !g.required) add("", "None", 0, true);
+      if (!g.multi && !g.required) add("", T("None"), 0, true);
       g.options.forEach((o, i) => add(String(o.id), o.name, o.price, !g.multi && g.required && i === 0));
       box.append(set);
     });

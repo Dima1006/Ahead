@@ -12,7 +12,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
 from . import config as cfg
-from . import db, legal, maintenance, media, telegram, web_account, web_admin, web_contact, web_options, web_public, web_venue
+from . import db, legal, maintenance, media, telegram, web_account, web_admin, web_contact, web_options, web_public, web_venue, web_waitlist
 from .core import BASE_DIR, Redirect, http_error, redirect_handler, render, route, server_error
 from .security import SecurityMiddleware
 from .seed import seed_demo
@@ -78,6 +78,7 @@ routes = [
     Route("/cron/expire", cron_expire),
     Route("/telegram/webhook", telegram.webhook, methods=["POST"]),
     Route("/for-venues", for_venues),
+    Route("/waitlist", web_waitlist.waitlist, methods=GP),
     Route("/v/{slug}", web_public.venue_page),
     Route("/v/{slug}/order", web_public.place_order, methods=P),
     # customers
@@ -145,6 +146,8 @@ routes = [
     Route("/admin", web_admin.admin_home),
     Route("/admin/test-mail", web_admin.admin_test_mail, methods=P),
     Route("/admin/mail-check", web_admin.admin_mail_check, methods=P),
+    Route("/admin/waitlist.csv", web_waitlist.admin_export),
+    Route("/admin/waitlist/{entry_id:int}/delete", web_waitlist.admin_delete, methods=P),
     Route("/admin/venues/{venue_id:int}/{action}", web_admin.admin_venue_action, methods=P),
     Route("/admin/flags/{venue_id:int}/{user_id:int}/unblock", web_admin.admin_unblock_user, methods=P),
     Mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static"),

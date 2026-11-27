@@ -298,3 +298,34 @@ PL.update({
     "Stamp cards": "Karty z pieczątkami", "🎁 Next item free": "🎁 Następna pozycja gratis",
     "{} of {} stamps": "{} z {} pieczątek",
 })
+
+PL.update({
+    "Waitlist": "Lista oczekujących", "Join the waitlist": "Dołącz do listy",
+    "Order your coffee before you get there.": "Zamów kawę, zanim dotrzesz na miejsce.",
+    "{} lets you order from your phone and pick up without waiting. You pay at the coffee shop. We are looking for the first coffee shops now.":
+        "{} pozwala zamówić z telefonu i odebrać bez czekania. Płacisz w kawiarni. Szukamy teraz pierwszych kawiarni.",
+    "Join the waitlist to show them that people want this. It is free and you do not order or pay anything.":
+        "Dołącz do listy, aby pokazać im, że ludzie tego chcą. To nic nie kosztuje, niczego nie zamawiasz ani nie płacisz.",
+    "people have already joined": "osób już się zapisało",
+    "City": "Miasto", "Warsaw": "Warszawa", "Which coffee shop would you use it at? (optional)": "W której kawiarni chcesz z tego korzystać? (opcjonalnie)",
+    "Name and street": "Nazwa i ulica", "First name (optional)": "Imię (opcjonalnie)",
+    "I am at least 16 and I agree that {} keeps these details and may email me about its launch. Coffee shops see only totals, never my email or first name. I can ask to be removed at any time.":
+        "Mam co najmniej 16 lat i zgadzam się, aby {} przechowywał te dane i napisał do mnie o starcie. Kawiarnie widzą tylko liczby, nigdy mojego e-maila ani imienia. W każdej chwili mogę poprosić o usunięcie.",
+    "You are on the list.": "Jesteś na liście.", "You are on the waitlist. Thank you!": "Jesteś na liście oczekujących. Dziękujemy!",
+    "Next, we show coffee shops how many people want this. The more people join, the easier it is to get the first ones on board.":
+        "Teraz pokażemy kawiarniom, ile osób tego chce. Im więcej osób dołączy, tym łatwiej pozyskać pierwsze z nich.",
+    "Know someone who hates waiting for coffee? Send them this page.": "Znasz kogoś, kto nie lubi czekać na kawę? Wyślij mu tę stronę.",
+    "Back to the start page": "Wróć na stronę główną", "Enter a valid email address.": "Podaj poprawny adres e-mail.",
+    "Enter your city.": "Podaj swoje miasto.", "Please tick the box to join the waitlist.": "Zaznacz zgodę, aby dołączyć do listy.",
+    "Too many sign-ups from your network. Please try again later.": "Zbyt wiele zapisów z Twojej sieci. Spróbuj ponownie później.",
+    "No coffee shops are taking orders yet.": "Żadna kawiarnia jeszcze nie przyjmuje zamówień.",
+    "to bring the first ones. Do you run one?": "aby przyciągnąć pierwsze. Prowadzisz kawiarnię?",
+})
+
+PL.update({
+    "Password reset by email is not available yet.": "Resetowanie hasła przez e-mail nie jest jeszcze dostępne.",
+    "and we will help.": "a pomożemy.",
+    "{} is looking for its first coffee shops. Join the waitlist and show them that people want to order ahead.":
+        "{} szuka pierwszych kawiarni. Dołącz do listy i pokaż im, że ludzie chcą zamawiać z wyprzedzeniem.",
+    "I run a coffee shop": "Prowadzę kawiarnię",
+})

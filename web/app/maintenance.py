@@ -3,6 +3,7 @@ import asyncio
 import logging
 import time
 
+from . import config as cfg
 from . import db, events, orders
 
 log = logging.getLogger("coffee")
@@ -12,6 +13,8 @@ _last_run = 0.0
 def _expire_once() -> list[int]:
     conn = db.connect()
     try:
+        conn.execute("DELETE FROM waitlist WHERE created_at < utc_text(make_interval(days => ?))",
+                     (-cfg.WAITLIST_KEEP_DAYS,))
         return orders.expire_stale(conn)
     finally:
         conn.close()

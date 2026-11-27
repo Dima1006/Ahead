@@ -1,6 +1,7 @@
 // Live updates over a WebSocket. The server only says "something changed"; we then re-fetch the
 // (permission-checked) HTML for this page. If the socket is down we poll slowly until it is back.
 (() => {
+  const T = (s) => (window.I18N && window.I18N[s]) || s;
   const box = document.getElementById("live-box");
   if (!box || !box.dataset.liveWs) return;
   const { liveUrl, liveWs, liveOrder, liveSelect, liveSound } = box.dataset;
@@ -12,7 +13,7 @@
   try { soundOn = localStorage.getItem("ahead-sound") === "1"; } catch (e) {}
 
   const toggle = document.getElementById("sound-toggle");
-  function showSound() { if (toggle) toggle.textContent = "Sound: " + (soundOn ? "on" : "off"); }
+  function showSound() { if (toggle) toggle.textContent = T(soundOn ? "Sound: on" : "Sound: off"); }
   if (toggle) {
     showSound();
     toggle.addEventListener("click", () => {
@@ -37,7 +38,7 @@
     connected = ok;
     if (!connEl) return;
     connEl.dataset.state = ok ? "live" : "down";
-    connEl.textContent = ok ? "Live" : "Reconnecting…";
+    connEl.textContent = T(ok ? "Live" : "Reconnecting…");
   }
 
   async function refresh() {

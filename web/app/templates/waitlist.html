@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Join the waitlist · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<section class="auth">
+  {% if joined %}
+  <h1>You are on the list.</h1>
+  <p class="lead">Next, we show coffee shops how many people want this. The more people join, the easier it is to get the first ones on board.</p>
+  <p>Know someone who hates waiting for coffee? Send them this page.</p>
+  <p><a class="btn" href="/">Back to the start page</a></p>
+  {% else %}
+  <h1>Order your coffee before you get there.</h1>
+  <p class="lead">{{ APP_NAME }} lets you order from your phone and pick up without waiting. You pay at the coffee shop. We are looking for the first coffee shops now.</p>
+  <p class="muted">Join the waitlist to show them that people want this. It is free and you do not order or pay anything.</p>
+  {% if total %}<p class="wl-count"><strong>{{ total }}</strong> <span>people have already joined</span></p>{% endif %}
+  {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/waitlist">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <label>Email <input type="email" name="email" value="{{ form.email or '' }}" autocomplete="email" required maxlength="254"></label>
+    <label>City <input name="city" value="{{ form.city or '' }}" placeholder="Warsaw" autocomplete="address-level2" required maxlength="60"></label>
+    <label>Which coffee shop would you use it at? (optional) <input name="shop" value="{{ form.shop or '' }}" placeholder="Name and street" maxlength="80"></label>
+    <label>First name (optional) <input name="name" value="{{ form.name or '' }}" autocomplete="given-name" maxlength="60"></label>
+    <label class="check consent"><input type="checkbox" name="consent" value="1" required>
+      <span>I am at least 16 and I agree that {{ APP_NAME }} keeps these details and may email me about its launch. Coffee shops see only totals, never my email or first name. I can ask to be removed at any time. <a href="/privacy">Privacy Policy</a></span></label>
+    {% if captcha_site_key %}<div class="cf-turnstile" data-sitekey="{{ captcha_site_key }}"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endif %}
+    <button class="btn wide">Join the waitlist</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

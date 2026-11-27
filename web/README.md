@@ -47,6 +47,12 @@ The address changes every run, so Google sign-in does not work there (use e-mail
 ## Tests
 Need `pip install httpx` and a PostgreSQL server in `TEST_DATABASE_URL`: `python3 tests/test_smoke.py` (and the other `tests/test_*.py`).
 
+## Waitlist
+`/waitlist` collects people who want the service (e-mail, city, optionally first name and a coffee shop). `/admin` shows the
+totals, the cities and the coffee shops people named, a CSV export and a remove button. Show coffee shops totals only.
+The public page shows the number from 10 sign-ups on, and it is always the real one. Without e-mail configured the
+addresses are not confirmed. Entries are deleted after 2 years. Tests: `python3 tests/test_waitlist.py`.
+
 See `SECURITY.md` for the security review.
 
 ## Stage 2 update

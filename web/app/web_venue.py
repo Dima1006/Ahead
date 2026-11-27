@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException
 from starlette.websockets import WebSocket
 
 from . import config as cfg
-from . import events, loyalty, orders, realtime
+from . import db, events, loyalty, orders, realtime
 from .core import (go, hash_async, login_session, read_form, render, require_venue, route, verify_async, ws_venue)
 from .legal import CAPTCHA_ERROR, captcha_ok
 from .mail import public_url, send_mail_bg
@@ -69,9 +69,13 @@ async def venue_register(request, conn):
         return render(request, "venue_register.html", 400, error=error,
                       form={"venue_name": name, "city": city, "email": email})
     hashed = await hash_async(password)
-    with conn:
-        vid = conn.insert("INSERT INTO venues (slug, name, city, email, password_hash) VALUES (?, ?, ?, ?, ?)",
-                           (unique_slug(conn, name), name, city, email, hashed))
+    try:
+        with conn:
+            vid = conn.insert("INSERT INTO venues (slug, name, city, email, password_hash) VALUES (?, ?, ?, ?, ?)",
+                              (unique_slug(conn, name), name, city, email, hashed))
+    except db.IntegrityError:   # the same e-mail or page address was taken a moment ago
+        return render(request, "venue_register.html", 400, error="Something went wrong. Please try again.",
+                      form={"venue_name": name, "city": city, "email": email})
     venue = conn.execute("SELECT * FROM venues WHERE id = ?", (vid,)).fetchone()
     if cfg.ADMIN_EMAIL:
         send_mail_bg(cfg.ADMIN_EMAIL, f"New venue to approve: {name}",
@@ -114,6 +118,8 @@ async def venue_forgot(request, conn):
     if request.method == "GET":
         return render(request, "venue_forgot.html")
     form = await read_form(request)
+    if not cfg.MAIL_ENABLED:
+        return go(request, "/venue/forgot")   # the page explains that no message can be sent
     email = clean(str(form.get("email", "")), 254).lower()
     _throttle(f"vforgot-ip:{client_ip(request)}", 5, 3600)
     _throttle(f"vforgot-email:{email}", 3, 3600)
@@ -261,7 +267,8 @@ async def order_status(request, conn):
     order_id = request.path_params["order_id"]
     if conn.execute("SELECT 1 FROM orders WHERE id = ? AND venue_id = ?", (order_id, venue["id"])).fetchone() is None:
         raise HTTPException(404, "Order not found")  # other venues' orders look like they do not exist
-    row, error = orders.transition(conn, venue["id"], order_id, str(form.get("status", "")), str(form.get("reason", "")))
+    row, error = orders.transition(conn, venue["id"], order_id, str(form.get("status", "")),
+                                   clean(str(form.get("reason", "")), 200))
     if row:
         await events.announce(order_id)
         return go(request, _panel_next(form))
@@ -346,7 +353,7 @@ async def add_item(request, conn):
         category_id = int(form.get("category_id", ""))
     except ValueError:
         raise HTTPException(404, "Category not found")
-    if not conn.execute("SELECT 1 FROM categories WHERE id = ? AND venue_id = ?", (category_id, venue["id"])).fetchone():
+    if not 0 < category_id < 2**31 or not conn.execute("SELECT 1 FROM categories WHERE id = ? AND venue_id = ?", (category_id, venue["id"])).fetchone():
         raise HTTPException(404, "Category not found")
     anchor = f"/panel/menu#cat-{category_id}"
     name = clean(str(form.get("name", "")), 80)
@@ -455,8 +462,11 @@ async def change_email(request, conn):
         return go(request, "/panel/settings", error="This is already your e-mail.")
     if conn.execute("SELECT 1 FROM venues WHERE email = ?", (new,)).fetchone():
         return go(request, "/panel/settings", error="This e-mail is already used by another venue.")
-    with conn:
-        conn.execute("UPDATE venues SET email = ? WHERE id = ?", (new, venue["id"]))
+    try:
+        with conn:
+            conn.execute("UPDATE venues SET email = ? WHERE id = ?", (new, venue["id"]))
+    except db.IntegrityError:
+        return go(request, "/panel/settings", error="This e-mail is already used by another venue.")
     send_mail_bg(venue["email"], "Your venue login e-mail was changed",
                  f"The login e-mail of {venue['name']} was changed to {new}. "
                  "If this was not you, contact us at once and reset your password.")
@@ -509,7 +519,7 @@ async def save_loyalty(request, conn):
     own = {r["id"] for r in conn.execute("SELECT id FROM items WHERE venue_id = ?", (venue["id"],))}
     chosen = set()
     for raw in form.getlist("item_id"):
-        if str(raw).isdigit() and int(raw) in own:   # ids of other venues are ignored
+        if str(raw).isdecimal() and int(raw) in own:   # ids of other venues are ignored
             chosen.add(int(raw))
     if (welcome or every) and not chosen:
         return go(request, "/panel/settings#loyalty",

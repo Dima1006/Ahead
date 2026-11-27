@@ -12,7 +12,7 @@ from starlette.websockets import WebSocket
 
 from . import config as cfg
 from . import loyalty
-from . import google, orders, realtime
+from . import db, google, orders, realtime
 from .core import (current_user, go, hash_async, login_session, read_form, render, require_user, route,
                    verify_async, ws_user)
 from .events import announce
@@ -176,9 +176,12 @@ async def signup(request, conn):
         return render(request, "signup.html", 400, error=error, next=nxt,
                       form={"name": name, "email": email, "phone": raw_phone})
     hashed = await hash_async(password)
-    with conn:
-        uid = conn.insert("INSERT INTO users (email, password_hash, name, phone) VALUES (?, ?, ?, ?)",
-                           (email, hashed, name, phone))
+    try:
+        with conn:
+            uid = conn.insert("INSERT INTO users (email, password_hash, name, phone) VALUES (?, ?, ?, ?)",
+                              (email, hashed, name, phone))
+    except db.IntegrityError:   # a parallel request created it a moment ago
+        return go(request, "/login", error="An account with this email already exists. Log in, or use “Forgot password”.")
     user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
     _send_verification(request, user, nxt)
     if cfg.VERIFY_REQUIRED:
@@ -246,6 +249,8 @@ async def forgot(request, conn):
     if request.method == "GET":
         return render(request, "forgot.html")
     form = await read_form(request)
+    if not cfg.MAIL_ENABLED:
+        return go(request, "/forgot")   # the page explains that no message can be sent
     email = clean(str(form.get("email", "")), 254).lower()
     _throttle(f"forgot-ip:{client_ip(request)}", 5, 3600)
     _throttle(f"forgot-email:{email}", 3, 3600)
@@ -403,6 +408,7 @@ async def account_delete(request, conn):
         # Venues keep their order history for bookkeeping, but without personal data.
         conn.execute("UPDATE orders SET customer_name = 'Deleted customer', phone = '', note = '' WHERE user_id = ?",
                      (user["id"],))
+        conn.execute("DELETE FROM login_codes WHERE email = ?", (user["email"],))
         conn.execute("DELETE FROM users WHERE id = ?", (user["id"],))
     request.session.clear()
     return go(request, "/", msg="Your account and personal data were deleted.")

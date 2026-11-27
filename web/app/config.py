@@ -17,6 +17,10 @@ CRON_SECRET = os.getenv("CRON_SECRET", "").strip()   # Vercel Cron sends it as "
 # Public address of the site, e.g. https://coffee.example.com. Used in e-mail links and the
 # Google redirect URI. Never taken from request headers (Host-header injection).
 BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
+if not BASE_URL and SERVERLESS:   # fall back to the addresses Vercel itself provides (never to request headers)
+    _host = os.getenv("VERCEL_PROJECT_PRODUCTION_URL" if os.getenv("VERCEL_ENV") == "production"
+                      else "VERCEL_BRANCH_URL", "").strip()
+    BASE_URL = f"https://{_host}" if _host else ""
 HTTPS = BASE_URL.startswith("https://")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "")
@@ -65,6 +69,9 @@ VERIFY_REQUIRED = MAIL_ENABLED and not DEMO_MODE
 CODE_TTL_MIN = 10                # a sign-in code from e-mail works this long
 CODE_MAX_TRIES = 5               # wrong guesses before the code is thrown away
 CONTACT_PER_HOUR = 3             # contact-form messages per IP per hour
+WAITLIST_PER_HOUR = 20           # waitlist sign-ups per IP per hour (friends often share one network)
+WAITLIST_SHOW_FROM = 10          # the public page shows the number of sign-ups from this many on
+WAITLIST_KEEP_DAYS = 730         # waitlist entries are deleted after this long (stated in the Privacy Policy)
 
 # ---- ordering rules
 MAX_NO_SHOWS = 2                 # a customer is blocked at a venue after this many no-shows there

@@ -203,12 +203,14 @@ def _create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json:
         for line in lines[:cfg.MAX_CART_LINES + 1]:
             vid, qty = int(line["variant_id"]), int(line["qty"])
             raw = line.get("options") or []
+            if not 0 < vid < 2**31 or (isinstance(raw, list) and any(not 0 < int(x) < 2**31 for x in raw)):
+                raise ValueError
             if not isinstance(raw, list) or len(raw) > 20:
                 raise ValueError
             key = (vid, tuple(sorted({int(x) for x in raw})))
             if 1 <= qty <= 20:
                 wanted[key] = min(20, wanted.get(key, 0) + qty)
-    except (ValueError, TypeError, KeyError, AttributeError):
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         return None, "Your cart could not be read. Please try again."
     if not wanted:
         return None, "Your cart is empty."

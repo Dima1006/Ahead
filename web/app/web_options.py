@@ -58,7 +58,7 @@ def save_item_groups(conn, venue_id: int, item_id: int, form) -> None:
     """The item editor's checkboxes: which add-on groups this item offers (only the venue's own groups count)."""
     wanted = set()
     for x in form.getlist("group_id"):
-        if str(x).isdigit():
+        if str(x).isdecimal():
             wanted.add(int(x))
     own = {r["id"] for r in conn.execute("SELECT id FROM option_groups WHERE venue_id = ?", (venue_id,))}
     conn.execute("DELETE FROM item_option_groups WHERE item_id = ?", (item_id,))

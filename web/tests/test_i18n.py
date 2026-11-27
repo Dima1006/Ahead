@@ -20,7 +20,7 @@ def check(c, path, label=None, status=200):
 
 with TestClient(app, base_url=B, headers={"accept-language": "en"}) as c:
     for p in ("/", "/?q=latte", "/?q=zzzzqqq", "/for-venues", "/login", "/signup", "/forgot", "/login/code", "/contact",
-              "/venue/register", "/venue/login", "/venue/forgot", "/v/wood-coffee"):
+              "/venue/register", "/venue/login", "/venue/forgot", "/v/wood-coffee", "/waitlist", "/waitlist?joined=1"):
         check(c, p)
     c.post("/signup", data={"csrf": csrf(c, "/signup"), "name": "Ola", "email": "ola@example.pl", "password": "correct-horse-1", "phone": "", "agree": "1"})
     for p in ("/", "/v/wood-coffee", "/account", "/my-orders", "/contact"):
@@ -36,6 +36,13 @@ with TestClient(app, base_url=B, headers={"accept-language": "en"}) as c:
     # some error messages
     r = c.post("/contact", data={"csrf": csrf(c, "/contact"), "name": "", "email": "x", "message": "a"})
     for t in i18n.untranslated(r.text): MISSING.setdefault(t, "contact error")
+    for data in ({"email": "x", "city": "W"}, {"email": "a@b.pl", "city": ""}, {"email": "a@b.pl", "city": "W"}):
+        r = c.post("/waitlist", data={"csrf": csrf(c, "/waitlist"), **data})
+        assert r.status_code == 400
+        for t in i18n.untranslated(r.text): MISSING.setdefault(t, "waitlist error")
+    r = c.post("/waitlist", data={"csrf": csrf(c, "/waitlist"), "email": "a@b.pl", "city": "W", "consent": "1"})
+    assert r.status_code == 200
+    for t in i18n.untranslated(r.text): MISSING.setdefault(t, "waitlist done")
     check(c, "/nope", status=404)
 
 with TestClient(app, base_url=B, headers={"accept-language": "en"}) as v:

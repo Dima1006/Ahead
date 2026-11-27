@@ -121,6 +121,8 @@ def client_ip(request) -> str:
 _HOST_OK = re.compile(r"^[A-Za-z0-9.\-]+(:\d{1,5})?$")
 
 
+_HUGE_ID = re.compile(r"/\d{10,}(/|$)")
+
 _SAME_TIMING = ("/forgot", "/venue/forgot", "/login/code", "/resend-verification")
 
 
@@ -140,6 +142,8 @@ class SecurityMiddleware:
             return await self.app(scope, receive, send)
         conn = HTTPConnection(scope)
         path, method = scope["path"], scope["method"]
+        if "\x00" in path or _HUGE_ID.search(path):   # neither fits the database: no such page
+            return await PlainTextResponse("Not found", status_code=404)(scope, receive, send)
         is_static = path.startswith("/static/")
         if not is_static and path not in ("/healthz", "/telegram/webhook"):
             ip = client_ip(conn)
@@ -155,7 +159,7 @@ class SecurityMiddleware:
         # Photo uploads are the only requests allowed to be big (they are shrunk and re-encoded on the server).
         body_limit = cfg.MAX_UPLOAD_BYTES + 50_000 if (method == "POST" and path.startswith("/panel/photo/")) else cfg.MAX_BODY_BYTES
         length = conn.headers.get("content-length", "")
-        if length.isdigit() and int(length) > body_limit:
+        if length.isdecimal() and int(length) > body_limit:
             return await PlainTextResponse("Request too large", status_code=413)(scope, receive, send)
         host = conn.headers.get("host", "")
         # Safari needs the websocket host spelled out; 'self' alone does not cover ws:// there.
@@ -197,7 +201,7 @@ class SecurityMiddleware:
                 if cfg.HTTPS:
                     h["Strict-Transport-Security"] = "max-age=31536000"
                 if is_static and message.get("status") == 200:
-                    h["Cache-Control"] = "public, max-age=31536000, immutable"  # URLs carry ?v=<file time>
+                    h["Cache-Control"] = "public, max-age=31536000, immutable"  # URLs carry ?v=<content hash>
                 elif h.get("content-type", "").startswith("text/html"):
                     h["Cache-Control"] = "no-store"  # never cache pages that may hold personal data
             await send(message)

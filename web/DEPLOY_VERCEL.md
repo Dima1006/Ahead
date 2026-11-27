@@ -40,6 +40,7 @@ use a second bot for development.
 
 ## 5. Check on a preview deployment before production
 - [ ] pages and styles load; `/healthz` answers `ok`
+- [ ] join the waitlist on `/waitlist`; the entry shows in `/admin`, then remove it
 - [ ] register a venue, approve it in `/admin`, add an item with a photo
 - [ ] place an order: the venue's live board updates within a few seconds
 - [ ] leave the board open for more than 5 minutes: it reconnects and still updates

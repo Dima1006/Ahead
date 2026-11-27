@@ -143,7 +143,7 @@ async def venue_page(request, conn):
     reorder = None
     user = current_user(request)
     raw = request.query_params.get("reorder", "")
-    if user and raw.isdigit():
+    if user and raw.isdecimal() and len(raw) <= 9:
         reorder = orders.reorder_cart(conn, venue["id"], user["id"], int(raw)) or None
     return render(request, "venue.html", **venue_context(request, conn, venue, reorder=reorder))
 

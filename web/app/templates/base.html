@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+  <meta name="description" content="Order your coffee ahead, walk in and pick it up. You pay at the coffee shop.">
+  <meta property="og:title" content="{{ APP_NAME }}: order ahead, walk in, pick up">
+  <meta property="og:description" content="Order your coffee ahead, walk in and pick it up. You pay at the coffee shop.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="{{ static('favicon.svg') }}">
   <link rel="stylesheet" href="{{ static('style.css') }}">
   {% block head %}{% endblock %}
 </head>
@@ -35,6 +40,7 @@
           <a href="/admin">Admin</a>
           <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linklike">Log out</button></form>
         {% else %}
+          <a href="/waitlist">Waitlist</a>
           <a href="/for-venues">For venues</a>
           <a href="/login">Log in</a>
           <a class="btn small" href="/signup">Sign up</a>
@@ -58,6 +64,7 @@
       <nav aria-label="For customers">
         <h3>Customers</h3>
         <a href="/">Find a venue</a>
+        <a href="/waitlist">Join the waitlist</a>
         {% if me %}<a href="/my-orders">My orders</a><a href="/account">My account</a>
         {% else %}<a href="/login">Log in</a><a href="/signup">Create an account</a>{% endif %}
       </nav>

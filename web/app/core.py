@@ -1,4 +1,5 @@
 """Shared web plumbing: templates, per-request DB connection, login helpers, CSRF-checked forms."""
+import hashlib
 import logging
 import time
 from functools import wraps
@@ -25,16 +26,17 @@ ADMIN_SESSION_SECONDS = 8 * 3600
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["zl"] = format_zl
 
-_static_versions: dict[str, int] = {}
+_static_versions: dict[str, str] = {}
 
 
 def static_url(path: str) -> str:
-    """/static/x.js?v=<file time>: browsers cache it for a year and still get new code after a deploy."""
+    """/static/x.js?v=<content hash>: browsers cache it for a year and still get new code after a deploy.
+    (File times cannot be used: serverless builds give every file the same fixed time.)"""
     if path not in _static_versions:
         try:
-            _static_versions[path] = int((BASE_DIR / "static" / path).stat().st_mtime)
+            _static_versions[path] = hashlib.sha256((BASE_DIR / "static" / path).read_bytes()).hexdigest()[:12]
         except OSError:
-            _static_versions[path] = 0
+            _static_versions[path] = "0"
     return f"/static/{path}?v={_static_versions[path]}"
 
 
@@ -168,7 +170,7 @@ def render(request, name: str, status_code: int = 200, *, fragment: bool = False
     me, ven = current_user(request), current_venue(request)
     conn = request.state.__dict__.get("conn")
     ctx.update(csrf=csrf_token(request), me=me, ven=ven, is_admin=admin_ok(request),
-               google_enabled=google.enabled(), demo=cfg.DEMO_MODE,
+               google_enabled=google.enabled(), demo=cfg.DEMO_MODE, mail_enabled=cfg.MAIL_ENABLED,
                captcha_site_key=cfg.TURNSTILE_SITE_KEY if cfg.CAPTCHA_ENABLED else "",
                company=cfg.COMPANY_NAME, company_address=cfg.COMPANY_ADDRESS, privacy_email=cfg.PRIVACY_EMAIL, active_order=None, ven_new=0)
     if conn is not None and not fragment:
@@ -189,14 +191,12 @@ def render(request, name: str, status_code: int = 200, *, fragment: bool = False
 async def http_error(request, exc: HTTPException):
     if request.url.path.startswith("/ws/"):
         return RedirectResponse("/", status_code=303)
-    conn = request.state.__dict__.get("conn")
-    if conn is None:
-        request.state.conn = db.connect()
+    # The handler that raised has already closed its connection: the error page gets its own.
+    conn = request.state.conn = db.connect()
     try:
         return render(request, "error.html", exc.status_code, code=exc.status_code, message=exc.detail)
     finally:
-        if conn is None:
-            request.state.conn.close()
+        conn.close()
 
 
 async def redirect_handler(request, exc: Redirect):

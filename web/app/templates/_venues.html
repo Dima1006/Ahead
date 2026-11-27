@@ -16,5 +16,5 @@
   {% endfor %}
 </ul>
 {% else %}
-<p class="empty">{% if q %}Nothing found for “{{ q }}”. Try a venue name, a street, or a drink like “latte”.{% else %}No venues yet. Be the first: <a href="/venue/register">register your venue</a>.{% endif %}</p>
+<p class="empty">{% if q %}Nothing found for “{{ q }}”. Try a venue name, a street, or a drink like “latte”.{% else %}No coffee shops are taking orders yet. <a href="/waitlist">Join the waitlist</a> to bring the first ones. Do you run one? <a href="/venue/register">register your venue</a>.{% endif %}</p>
 {% endif %}

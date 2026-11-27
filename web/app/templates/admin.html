@@ -1,7 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Admin · {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Venues</h1>
+<h1>Waitlist</h1>
+<p><span class="muted">Sign-ups in total:</span> <strong>{{ waitlist.total }}</strong> · <span class="muted">in the last 7 days:</span> <strong>{{ waitlist.week }}</strong></p>
+<p class="muted small">Show coffee shops only these totals. Do not give them names or email addresses.{% if not mail_enabled %} Email addresses are not confirmed yet, so check the list for obvious fakes before you quote a number.{% endif %}</p>
+{% if waitlist.total %}
+<p><a class="btn ghost" href="/admin/waitlist.csv">Download CSV</a></p>
+<div class="two-col">
+  <section><h2>By city</h2>
+    <ul class="history">{% for c in waitlist.cities %}<li class="pairrow"><span translate="no">{{ c.label }}</span><span class="badge">{{ c.n }}</span></li>{% endfor %}</ul></section>
+  <section><h2>Coffee shops people asked for</h2>
+    <ul class="history">{% for s in waitlist.shops %}<li class="pairrow"><span translate="no">{{ s.label }}</span><span class="badge">{{ s.n }}</span></li>{% else %}<li class="muted">None yet.</li>{% endfor %}</ul></section>
+</div>
+<details class="gap"><summary><strong>Latest sign-ups</strong></summary>
+<ul class="rows admin-rows">
+  {% for w in waitlist.latest %}
+  <li><div class="arow"><div><strong>{{ w.email }}</strong><br><span class="muted">{{ [w.name, w.city, w.shop, w.created_at[:10]] | select | join(" · ") }}</span></div>
+    <form method="post" action="/admin/waitlist/{{ w.id }}/delete" class="inline" data-confirm="Remove this person from the waitlist?">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost danger-text">Remove</button></form></div></li>
+  {% endfor %}
+</ul>
+</details>
+{% endif %}
+
+<h1 class="gap">Venues</h1>
 {% set pending = venues | selectattr("status", "equalto", "pending") | list %}
 <p class="muted">{{ pending | length }} waiting for approval, {{ venues | length }} in total.</p>
 <ul class="rows admin-rows">

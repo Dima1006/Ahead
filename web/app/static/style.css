@@ -445,3 +445,9 @@ label.check input{width:auto;margin-top:.25rem;flex:none}
 .loyalty-items legend { font-weight: 600; margin-bottom: 4px; }
 .loyalty-items label.check { display: inline-flex; margin: 0 16px 6px 0; }
 .stamp-dots { letter-spacing: 2px; }
+
+/* ---- waitlist */
+.wl-count strong { font: 700 2rem var(--display); margin-right: 6px; }
+label.check.consent { align-items: flex-start; font-weight: 400; }
+label.check.consent input { margin-top: 5px; flex: none; }
+.history li.pairrow { grid-template-columns: minmax(0, 1fr) auto; overflow-wrap: anywhere; }

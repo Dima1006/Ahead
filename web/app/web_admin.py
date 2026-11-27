@@ -5,6 +5,7 @@ import hmac
 from starlette.exceptions import HTTPException
 
 from . import config as cfg
+from . import web_waitlist
 from .core import go, login_session, read_form, render, require_admin, route
 from .mail import diagnose, public_url, send_mail_bg, send_mail_checked
 from .security import client_ip, limiter
@@ -47,7 +48,7 @@ async def admin_home(request, conn):
         "WHERE f.warnings > 0 ORDER BY f.blocked DESC, f.venue_id").fetchall()
     messages = conn.execute("SELECT * FROM contact_messages ORDER BY id DESC LIMIT 30").fetchall()
     return render(request, "admin.html", venues=venues, blocked=blocked, messages=messages,
-                  mail_enabled=cfg.MAIL_ENABLED, admin_email=cfg.ADMIN_EMAIL)
+                  admin_email=cfg.ADMIN_EMAIL, waitlist=web_waitlist.stats(conn))
 
 
 @route
