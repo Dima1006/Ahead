@@ -1,7 +1,6 @@
 """Pages everybody can see: search, venue menu, placing an order."""
 import json
 import secrets
-import sqlite3
 import time
 
 from starlette.exceptions import HTTPException
@@ -24,23 +23,23 @@ def invalidate_index() -> None:
     _index["at"] = 0.0
 
 
-def _load_index(conn: sqlite3.Connection) -> None:
+def _load_index(conn) -> None:
     """One pass over the approved venues and their dishes, kept in memory for a few seconds,
     so typing in the search box does not hit the database on every keystroke."""
     venues = conn.execute(
         """SELECT v.*, (SELECT COUNT(*) FROM items i WHERE i.venue_id = v.id AND i.is_available = 1) AS item_count
-           FROM venues v WHERE v.status = 'approved'""").fetchall()
+           FROM venues v WHERE v.status = 'approved' ORDER BY v.id""").fetchall()
     dishes: dict[int, list[tuple[str, str]]] = {}
     for r in conn.execute(
             "SELECT i.venue_id, i.name AS item, c.name AS category FROM items i "
-            "JOIN categories c ON c.id = i.category_id WHERE i.is_available = 1"):
+            "JOIN categories c ON c.id = i.category_id WHERE i.is_available = 1 ORDER BY i.id"):
         dishes.setdefault(r["venue_id"], []).append((r["item"], normalize(r["item"] + " " + r["category"])))
     _index.update(at=time.monotonic(), venues=[
         (dict(v), normalize(" ".join((v["name"], v["city"], v["address"], v["description"]))), normalize(v["name"]))
         for v in venues if v["item_count"]], dishes=dishes)
 
 
-def search_venues(conn: sqlite3.Connection, q: str):
+def search_venues(conn, q: str):
     """Approved venues matching every word of the query against venue fields, categories and dish names."""
     if time.monotonic() - _index["at"] > INDEX_TTL:
         _load_index(conn)
@@ -73,7 +72,7 @@ async def home(request, conn):
     return render(request, "home.html", q=q, venues=venues)
 
 
-def load_menu(conn: sqlite3.Connection, venue_id: int):
+def load_menu(conn, venue_id: int):
     """Categories -> items -> variants for one venue."""
     categories = [dict(c, items=[]) for c in conn.execute(
         "SELECT * FROM categories WHERE venue_id = ? ORDER BY id", (venue_id,))]
@@ -156,7 +155,7 @@ async def place_order(request, conn):
     user = current_user(request)
     if not user:
         return go(request, f"/login?next=/v/{venue['slug']}", error="Log in to place your order. Your cart is saved.")
-    if not limiter.allow(f"order:{user['id']}", 10, 600):
+    if not limiter.allow_shared(f"order:{user['id']}", 10, 600):
         raise HTTPException(429, "Too many orders in a short time. Please wait a few minutes.")
     try:
         arrival = int(form.get("arrival_minutes", ""))

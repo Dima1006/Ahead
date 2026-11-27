@@ -1,8 +1,9 @@
 """E-mail flows: confirmation, password reset, sign-in code, contact form, admin test mail.
-Run: python3 -I tests/test_auth.py   (from the web/ folder). Mail is captured, nothing is really sent."""
+Run: python3 tests/test_auth.py   (from the web/ folder). Mail is captured, nothing is really sent."""
 import os, re, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "app.db"), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
                   DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40, SMTP_HOST="smtp.test", SMTP_USER="u@test", SMTP_PASSWORD="x",
                   ADMIN_EMAIL="owner@example.pl", BASE_URL="https://testserver")
 from starlette.testclient import TestClient
@@ -20,7 +21,7 @@ def csrf(c, path): return re.search(r'name="csrf" value="([^"]+)"', c.get(path).
 def one(q, *a):
     conn = db.connect(); r = conn.execute(q, a).fetchone(); conn.close(); return r
 def sql(q, *a):
-    conn = db.connect(); conn.execute(q, a); conn.commit(); conn.close()
+    conn = db.connect(); conn.execute(q, a); conn.close()
 def mail_to(addr, subject_part):
     for _ in range(40):
         for to, subj, body in reversed(SENT):
@@ -105,7 +106,7 @@ with TestClient(app, base_url=B) as c:
     # expired
     cl3 = TestClient(app, base_url=B); ask(cl3, "ola@example.pl")
     good = re.search(r"code: (\d{6})", [s for s in SENT if s[0] == "ola@example.pl" and "sign-in code" in s[1]][-1][1]).group(1)
-    sql("UPDATE login_codes SET expires_at = datetime('now', '-1 minute') WHERE email='ola@example.pl'")
+    sql("UPDATE login_codes SET expires_at = utc_text('-1 minute') WHERE email='ola@example.pl'")
     assert enter(cl3, "ola@example.pl", good).status_code == 400
     # an unconfirmed account that proves the mailbox with a code becomes confirmed
     sql("INSERT INTO users (email, password_hash, name) VALUES ('new@example.pl', 'x', 'New')")

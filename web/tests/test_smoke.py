@@ -1,7 +1,8 @@
-"""Run: python3 -I tests/test_smoke.py   (from the web/ folder)"""
+"""Run: python3 tests/test_smoke.py   (from the web/ folder)"""
 import json, os, re, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=tempfile.mktemp(suffix=".db"), DEMO_SEED="1", DEMO_MODE="1",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", DEMO_MODE="1",
                   ADMIN_PASSWORD="adminpass-123", DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40)
 from datetime import timedelta
 from starlette.testclient import TestClient
@@ -14,7 +15,7 @@ def csrf(c, path):
     return re.search(r'name="csrf" value="([^"]+)"', c.get(path).text).group(1)
 
 def sql(q, *a):
-    conn = db.connect(); conn.execute(q, a); conn.commit(); conn.close()
+    conn = db.connect(); conn.execute(q, a); conn.close()
 
 def one(q, *a):
     conn = db.connect(); r = conn.execute(q, a).fetchone(); conn.close(); return r
@@ -74,7 +75,7 @@ with TestClient(app, base_url="https://testserver") as c:
     assert one("SELECT status FROM orders WHERE id=?", oid)["status"] == "cancelled"
 
     # --- venue limits: pause, hours, capacity
-    sql("UPDATE venues SET paused_until=datetime('now','+30 minutes') WHERE slug='wood-coffee'")
+    sql("UPDATE venues SET paused_until=utc_text('30 minutes') WHERE slug='wood-coffee'")
     assert place(c, "wood-coffee", vid, key="p1-longkey-xx").status_code != 303
     sql("UPDATE venues SET paused_until=NULL, max_active=1 WHERE slug='wood-coffee'")
     assert place(c, "wood-coffee", vid, key="c1-longkey-xx").status_code == 303
@@ -87,7 +88,7 @@ with TestClient(app, base_url="https://testserver") as c:
     conn = db.connect()
     oid2 = one("SELECT id FROM orders WHERE status='new' ORDER BY id DESC")["id"]
     row, err = orders.transition(conn, 1, oid2, "no_show"); assert row is None and err   # too early
-    conn.execute("UPDATE orders SET arrive_at=datetime('now','-1 hour') WHERE id=?", (oid2,)); conn.commit()
+    conn.execute("UPDATE orders SET arrive_at=utc_text('-1 hour') WHERE id=?", (oid2,))
     row, err = orders.transition(conn, 1, oid2, "no_show"); assert row and not err, err
     assert conn.execute("SELECT warnings FROM venue_customer_flags WHERE venue_id=1").fetchone()["warnings"] == 1
     conn.close()

@@ -32,7 +32,7 @@ def _signer(salt: str) -> URLSafeTimedSerializer:
 
 
 def _throttle(key: str, limit: int, window: float) -> None:
-    if not limiter.allow(key, limit, window):
+    if not limiter.allow_shared(key, limit, window):
         raise HTTPException(429, TOO_MANY)
 
 
@@ -90,8 +90,9 @@ async def login_code(request, conn):
     if user:
         code = f"{secrets.randbelow(10 ** 6):06d}"
         with conn:
-            conn.execute("INSERT OR REPLACE INTO login_codes (email, code_hash, expires_at, tries) "
-                         "VALUES (?, ?, datetime('now', ?), 0)", (email, _code_hash(email, code), f"+{cfg.CODE_TTL_MIN} minutes"))
+            conn.execute("INSERT INTO login_codes (email, code_hash, expires_at, tries) "
+                         "VALUES (?, ?, utc_text(CAST(? AS interval)), 0) ON CONFLICT (email) DO UPDATE "
+                         "SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, tries = 0", (email, _code_hash(email, code), f"+{cfg.CODE_TTL_MIN} minutes"))
         send_mail_bg(email, f"Your sign-in code: {code}",
                      f"Hi {user['name']},\n\nYour sign-in code is {code}\n\n"
                      f"It works for {cfg.CODE_TTL_MIN} minutes. If you did not ask for it, ignore this message: "
@@ -112,21 +113,20 @@ async def login_code_verify(request, conn):
     ip = client_ip(request)
     _throttle(f"codev-ip:{ip}", 30, 600)
     _throttle(f"codev-email:{email}", 15, 600)
-    row = conn.execute("SELECT * FROM login_codes WHERE email = ? AND expires_at > datetime('now')", (email,)).fetchone()
-    good = bool(row and row["tries"] < cfg.CODE_MAX_TRIES and len(code) == 6
-                and hmac.compare_digest(row["code_hash"], _code_hash(email, code)))
+    row = conn.execute("UPDATE login_codes SET tries = tries + 1 WHERE email = ? AND expires_at > utc_text() "
+                       "AND tries < ? RETURNING code_hash", (email, cfg.CODE_MAX_TRIES)).fetchone()
+    good = bool(row and len(code) == 6 and hmac.compare_digest(row["code_hash"], _code_hash(email, code)))
     if good:
         user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         with conn:
-            conn.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+            if conn.execute("DELETE FROM login_codes WHERE email = ? AND code_hash = ?",
+                            (email, row["code_hash"])).rowcount != 1:
+                user = None   # the same code was used by a parallel request
             if user:   # the code proves control of the mailbox
                 conn.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user["id"],))
         if user:
             login_session(request, user=conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone())
             return go(request, nxt)
-    elif row:
-        with conn:
-            conn.execute("UPDATE login_codes SET tries = tries + 1 WHERE email = ?", (email,))
     return render(request, "login_code_verify.html", 400, email=email, next=nxt,
                   error="That code is wrong or has expired. Check the latest email, or request a new code.")
 
@@ -177,8 +177,8 @@ async def signup(request, conn):
                       form={"name": name, "email": email, "phone": raw_phone})
     hashed = await hash_async(password)
     with conn:
-        uid = conn.execute("INSERT INTO users (email, password_hash, name, phone) VALUES (?, ?, ?, ?)",
-                           (email, hashed, name, phone)).lastrowid
+        uid = conn.insert("INSERT INTO users (email, password_hash, name, phone) VALUES (?, ?, ?, ?)",
+                           (email, hashed, name, phone))
     user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
     _send_verification(request, user, nxt)
     if cfg.VERIFY_REQUIRED:
@@ -455,4 +455,4 @@ async def ws_me(ws: WebSocket):
     user = ws_user(ws) if ws_origin_ok(ws) else None
     if not user:
         return await ws.close(code=1008)
-    await realtime.serve(ws, [f"user:{user['id']}"], client_ip(ws))
+    await realtime.serve(ws, "user", user["id"], client_ip(ws))

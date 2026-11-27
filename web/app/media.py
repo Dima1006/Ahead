@@ -2,24 +2,22 @@
 
 Safety rules: the file type is decided by decoding the image (never by the file name or the browser's
 type); every upload is re-encoded to JPEG, which removes metadata (GPS in phone photos) and any
-hidden payload; huge images are refused before they are decoded fully; file names are random, so a
-visitor can neither guess them nor write outside the uploads folder."""
+hidden payload; huge images are refused before they are decoded fully; names are random, so a
+visitor cannot guess them. The files live in the `photos` table: serverless instances have no shared disk."""
 import io
 import secrets
 import re
 import threading
-from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
-from starlette.responses import FileResponse
+from starlette.responses import Response
 
 from . import config as cfg
-from .db import DB_PATH
+from . import db
 
 Image.MAX_IMAGE_PIXELS = cfg.MAX_IMAGE_PIXELS
-UPLOAD_DIR = Path(DB_PATH).parent / "uploads"
 _NAME = re.compile(r"^[A-Za-z0-9_-]{16,40}\.jpg$")
 _SIZES = {"item": (640, 640), "venue": (640, 640)}   # both are square: shown as circles or square crops
 _slots = threading.BoundedSemaphore(2)   # at most two images are processed at the same time
@@ -60,9 +58,12 @@ def _process(data: bytes, kind: str) -> bytes:
 def _save(data: bytes, kind: str) -> str:
     with _slots:
         encoded = _process(data, kind)
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     name = secrets.token_urlsafe(18) + ".jpg"
-    (UPLOAD_DIR / name).write_bytes(encoded)
+    conn = db.connect()
+    try:
+        conn.execute("INSERT INTO photos (name, data) VALUES (?, ?)", (name, encoded))
+    finally:
+        conn.close()
     return name
 
 
@@ -73,16 +74,27 @@ async def save_image(data: bytes, kind: str) -> str:
 
 def delete_image(name: str) -> None:
     if name and _NAME.fullmatch(name):
+        conn = db.connect()
         try:
-            (UPLOAD_DIR / name).unlink()
-        except OSError:
-            pass
+            conn.execute("DELETE FROM photos WHERE name = ?", (name,))
+        finally:
+            conn.close()
+
+
+def _read(name: str):
+    conn = db.connect()
+    try:
+        row = conn.execute("SELECT data FROM photos WHERE name = ?", (name,)).fetchone()
+    finally:
+        conn.close()
+    return bytes(row["data"]) if row else None
 
 
 async def media(request):
     name = request.path_params["name"]
-    path = UPLOAD_DIR / name
-    if not _NAME.fullmatch(name) or not path.is_file():
+    data = await run_in_threadpool(_read, name) if _NAME.fullmatch(name) else None
+    if data is None:
         raise HTTPException(404, "Not found")
-    return FileResponse(path, media_type="image/jpeg",
-                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    # s-maxage lets the CDN answer repeat requests without waking the function or the database.
+    return Response(data, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=31536000, s-maxage=86400, immutable"})

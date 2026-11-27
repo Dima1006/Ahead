@@ -1,6 +1,8 @@
 """Telegram bot for venue staff: new-order notifications with buttons, decline with a reason.
-Uses long polling inside the web process, so website and bot share one database and one set of rules."""
+Website and bot share one database and one set of rules. Updates arrive either through the webhook
+(/telegram/webhook, used on Vercel) or by long polling inside a long-running web process."""
 import asyncio
+import hmac
 import html
 import json
 import logging
@@ -9,6 +11,8 @@ import time
 import urllib.error
 import urllib.request
 
+from starlette.responses import PlainTextResponse
+
 from . import config as cfg
 from . import db, events, orders
 from .security import limiter
@@ -16,7 +20,6 @@ from .utils import clean, format_zl
 
 log = logging.getLogger("coffee")
 API = "https://api.telegram.org/bot{token}/{method}"
-PENDING_DECLINE: dict[int, tuple[int, float]] = {}   # chat_id -> (order_id, deadline)
 CALLBACK = re.compile(r"^o:(\d{1,9}):(preparing|ready|completed|no_show|decline)$")
 
 
@@ -118,7 +121,8 @@ async def sync_order(order_id: int, new: bool) -> None:
                 c = db.connect()
                 try:
                     with c:
-                        c.execute("INSERT OR REPLACE INTO tg_messages (order_id, chat_id, message_id) VALUES (?, ?, ?)",
+                        c.execute("INSERT INTO tg_messages (order_id, chat_id, message_id) VALUES (?, ?, ?) "
+                                  "ON CONFLICT (order_id, chat_id) DO UPDATE SET message_id = excluded.message_id",
                                   (order_id, chat_id, res["message_id"]))
                 finally:
                     c.close()
@@ -138,6 +142,11 @@ def _linked_venue_ids(conn, chat_id: int) -> list[int]:
     return [r["venue_id"] for r in conn.execute("SELECT venue_id FROM tg_chats WHERE chat_id = ?", (chat_id,))]
 
 
+def _take_pending(conn, chat_id: int):
+    """Read and forget in one step, so a decline reason is used only once."""
+    return conn.execute("DELETE FROM tg_pending WHERE chat_id = ? RETURNING order_id, deadline", (chat_id,)).fetchone()
+
+
 async def _reply(chat_id: int, text: str, **extra):
     try:
         await call("sendMessage", chat_id=chat_id, text=text, **extra)
@@ -153,23 +162,23 @@ async def _on_message(msg: dict) -> None:
     conn = db.connect()
     try:
         if cmd == "/start" and arg.strip():
-            if not limiter.allow(f"tg-link:{chat_id}", 10, 60):
+            if not limiter.allow_shared(f"tg-link:{chat_id}", 10, 60):
                 return await _reply(chat_id, "Too many attempts. Wait a minute and try again.")
             row = conn.execute("SELECT c.venue_id, v.name FROM tg_link_codes c JOIN venues v ON v.id = c.venue_id "
-                               "WHERE c.code = ? AND c.expires_at > datetime('now') AND v.status = 'approved'",
+                               "WHERE c.code = ? AND c.expires_at > utc_text() AND v.status = 'approved'",
                                (arg.strip()[:64],)).fetchone()
             if not row:
                 return await _reply(chat_id, "This link is invalid or expired. Create a new one in the venue panel.")
             title = clean(chat.get("title") or chat.get("first_name") or "chat", 60)
             with conn:
-                conn.execute("INSERT OR IGNORE INTO tg_chats (venue_id, chat_id, title) VALUES (?, ?, ?)",
+                conn.execute("INSERT INTO tg_chats (venue_id, chat_id, title) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
                              (row["venue_id"], chat_id, title))
                 conn.execute("DELETE FROM tg_link_codes WHERE code = ?", (arg.strip()[:64],))
             return await _reply(chat_id, f"✅ Connected to {row['name']}. New orders will appear here with buttons.")
         if cmd == "/stop":
             with conn:
                 conn.execute("DELETE FROM tg_chats WHERE chat_id = ?", (chat_id,))
-            PENDING_DECLINE.pop(chat_id, None)
+            _take_pending(conn, chat_id)
             return await _reply(chat_id, "Disconnected. You will no longer receive orders here.")
         if cmd == "/orders":
             venues = _linked_venue_ids(conn, chat_id)
@@ -182,10 +191,9 @@ async def _on_message(msg: dict) -> None:
                 full, name = _load(conn, o["id"])
                 await _reply(chat_id, order_text(full, name), parse_mode="HTML", reply_markup=order_keyboard(full))
             return
-        pending = PENDING_DECLINE.get(chat_id)
-        if pending and not text.startswith("/"):
-            order_id, deadline = pending
-            PENDING_DECLINE.pop(chat_id, None)
+        pending = None if text.startswith("/") else _take_pending(conn, chat_id)
+        if pending:
+            order_id, deadline = pending["order_id"], pending["deadline"]
             if time.time() > deadline:
                 return await _reply(chat_id, "That took too long. Press Decline again.")
             o = conn.execute("SELECT venue_id FROM orders WHERE id = ?", (order_id,)).fetchone()
@@ -217,7 +225,9 @@ async def _on_callback(cb: dict) -> None:
         if action == "decline":
             if conn.execute("SELECT status FROM orders WHERE id = ?", (order_id,)).fetchone()["status"] not in orders.ALLOWED:
                 return await _answer(cb_id, "This order was already updated.", alert=True)
-            PENDING_DECLINE[chat_id] = (order_id, time.time() + 300)
+            conn.execute("INSERT INTO tg_pending (chat_id, order_id, deadline) VALUES (?, ?, ?) ON CONFLICT (chat_id) "
+                         "DO UPDATE SET order_id = excluded.order_id, deadline = excluded.deadline",
+                         (chat_id, order_id, time.time() + 300))
             await _answer(cb_id, "Send the reason")
             return await _reply(chat_id, f"Why is order #{order_id} declined? Reply with a short reason "
                                          "(the customer will see it).", reply_markup={"force_reply": True})
@@ -246,15 +256,36 @@ async def handle_update(upd: dict) -> None:
         await _on_message(msg)
 
 
-async def run() -> None:
-    """Long-polling loop. Started from the app lifespan when TELEGRAM_BOT_TOKEN is set."""
+async def load_username() -> bool:
+    """Fill in the bot's @name (needed for the "Connect Telegram" link)."""
     try:
-        me = await call("getMe")
-        cfg.TELEGRAM_BOT_USERNAME = me.get("username", "")
-        log.info("Telegram bot @%s is running", cfg.TELEGRAM_BOT_USERNAME)
+        me = await call("getMe", _timeout=8)
     except TelegramError as exc:
         log.error("Telegram disabled: getMe failed (%s). Check TELEGRAM_BOT_TOKEN.", exc)
+        return False
+    cfg.TELEGRAM_BOT_USERNAME = me.get("username", "")
+    return True
+
+
+async def webhook(request):
+    """Telegram sends updates here. The secret header (set by app.set_webhook) proves it is Telegram."""
+    sent = request.headers.get("x-telegram-bot-api-secret-token", "")
+    if not (cfg.TELEGRAM_BOT_TOKEN and cfg.TELEGRAM_WEBHOOK_SECRET
+            and hmac.compare_digest(sent.encode(), cfg.TELEGRAM_WEBHOOK_SECRET.encode())):
+        return PlainTextResponse("Not found", status_code=404)
+    try:
+        update = json.loads(await request.body())
+        await handle_update(update)
+    except Exception as exc:  # answer 200 anyway, or Telegram would resend a broken update again and again
+        log.error("Telegram update failed: %s", type(exc).__name__)
+    return PlainTextResponse("ok")
+
+
+async def run() -> None:
+    """Long-polling loop. Started from the app lifespan when there is no webhook secret."""
+    if not await load_username():
         return
+    log.info("Telegram bot @%s is running", cfg.TELEGRAM_BOT_USERNAME)
     offset = None
     while True:
         try:

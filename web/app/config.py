@@ -8,6 +8,12 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, "1" if default else "0").strip().lower() in ("1", "true", "yes", "on")
 
 
+# PostgreSQL connection string. On Vercel use the *pooled* one.
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+# Vercel sets VERCEL=1. There the app runs as short-lived instances: no background loops, no local files.
+SERVERLESS = bool(os.getenv("VERCEL"))
+CRON_SECRET = os.getenv("CRON_SECRET", "").strip()   # Vercel Cron sends it as "Authorization: Bearer ..."
+
 # Public address of the site, e.g. https://coffee.example.com. Used in e-mail links and the
 # Google redirect URI. Never taken from request headers (Host-header injection).
 BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
@@ -15,6 +21,8 @@ HTTPS = BASE_URL.startswith("https://")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 SECRET_KEY_GENERATED = not SECRET_KEY
+if SECRET_KEY_GENERATED and SERVERLESS:
+    raise RuntimeError("Set SECRET_KEY: every instance must sign sessions with the same key.")
 if SECRET_KEY_GENERATED:
     SECRET_KEY = secrets.token_hex(32)  # sessions are lost on restart; set SECRET_KEY in production
     logging.getLogger("coffee").warning("SECRET_KEY is not set: a random one is used for this run.")
@@ -46,6 +54,8 @@ MAIL_FROM = os.getenv("MAIL_FROM", "").strip() or SMTP_FROM or os.getenv("ADMIN_
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = ""  # filled in at startup from getMe
+# With a secret set, Telegram calls /telegram/webhook; without it the app polls (needs a long-running server).
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
 
 # Print the body of e-mails (password-reset links!) to the log when SMTP is not set up. Local development only.
 MAIL_LOG_BODY = env_bool("MAIL_LOG_BODY")
@@ -67,7 +77,7 @@ MAX_CART_LINES = 30
 MAX_CATEGORIES = 30              # per venue
 MAX_OPTION_GROUPS = 20           # per venue
 MAX_OPTIONS_PER_GROUP = 20
-MAX_UPLOAD_BYTES = 6_000_000     # a photo may be this big before it is shrunk
+MAX_UPLOAD_BYTES = 4_000_000     # a photo may be this big before it is shrunk (Vercel caps requests at 4.5 MB)
 MAX_IMAGE_PIXELS = 25_000_000    # decompression-bomb guard
 UPLOADS_PER_HOUR = 30            # photo uploads per venue per hour
 MAX_ITEMS = 300                  # per venue
@@ -79,8 +89,8 @@ RATE_ALL = (240, 60)             # requests per IP per 60 s, all pages
 RATE_POST = (60, 60)             # form submissions per IP per 60 s
 RATE_SEARCH = (40, 60)           # live-search requests per IP per 60 s
 HASH_CONCURRENCY = 4             # password hashes computed at the same time (each uses ~16 MB)
-QUERY_TIMEOUT_S = 3              # a single database query running longer than this is aborted
-WS_MAX_PER_IP = 10               # open WebSockets per IP
+WS_MAX_PER_IP = 10               # open WebSockets per IP (counted per instance)
+WS_POLL_SECONDS = 2.0            # how often an open WebSocket looks for order changes
 
 # ---- legal / captcha (all optional)
 COMPANY_NAME = os.getenv("COMPANY_NAME", "").strip()        # who runs the service (shown in Privacy Policy / Terms)

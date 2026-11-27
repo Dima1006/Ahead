@@ -1,64 +1,70 @@
-"""In-process publish/subscribe for WebSocket pushes. Works with ONE server process."""
+"""Live updates over WebSockets.
+
+Several server instances may be running, and the order can be changed by any of them (website,
+Telegram, cron). So every open socket watches the database: when the status of a watched order
+changes, the browser is told and re-fetches the (permission-checked) HTML."""
 import asyncio
+import logging
 from collections import defaultdict
 
 from starlette.websockets import WebSocketDisconnect
 
 from . import config as cfg
+from . import db
 
-MAX_PER_CHANNEL = 20
+log = logging.getLogger("coffee")
 MAX_MESSAGE_CHARS = 16  # clients only ever send "ping"
+_per_ip: dict[str, int] = defaultdict(int)
+
+# Active orders, plus those finished in the last 10 minutes (so that finishing is seen as a change).
+_QUERY = ("SELECT id, status FROM orders WHERE {column} = ? AND (status IN ('new', 'preparing', 'ready') "
+          "OR updated_at >= utc_text('-10 minutes')) ORDER BY id")
+_COLUMNS = {"venue": "venue_id", "user": "user_id"}
 
 
-class Hub:
-    def __init__(self):
-        self.channels: dict[str, set[asyncio.Queue]] = defaultdict(set)
-        self.per_ip: dict[str, int] = defaultdict(int)
+class _Watcher:
+    """One database connection per socket, reopened if it drops."""
 
-    def subscribe(self, channels: list[str]) -> asyncio.Queue | None:
-        if any(len(self.channels[c]) >= MAX_PER_CHANNEL for c in channels):
-            return None
-        q: asyncio.Queue = asyncio.Queue(maxsize=50)
-        q.channels = list(channels)  # type: ignore[attr-defined]
-        for c in channels:
-            self.channels[c].add(q)
-        return q
+    def __init__(self, kind: str, key: int):
+        self.sql, self.key, self.conn = _QUERY.format(column=_COLUMNS[kind]), key, None
 
-    def unsubscribe(self, q: asyncio.Queue) -> None:
-        for c in q.channels:  # type: ignore[attr-defined]
-            self.channels[c].discard(q)
-            if not self.channels[c]:
-                del self.channels[c]
+    def snapshot(self) -> dict[int, str]:
+        try:
+            self.conn = self.conn or db.connect()
+            return {r["id"]: r["status"] for r in self.conn.execute(self.sql, (self.key,))}
+        except Exception:
+            self.close()
+            raise
 
-    def publish(self, channel: str, message: dict) -> None:
-        for q in list(self.channels.get(channel, ())):
-            try:
-                q.put_nowait(message)
-            except asyncio.QueueFull:
-                pass  # a stuck client must not block everyone else; it will resync on reconnect
+    def close(self) -> None:
+        if self.conn:
+            self.conn.close()
+            self.conn = None
 
 
-hub = Hub()
+def changes(old: dict[int, str], new: dict[int, str]) -> list[dict]:
+    return [{"type": "order", "order_id": i, "status": status, "new": i not in old and status == "new"}
+            for i, status in new.items() if old.get(i) != status]
 
 
-async def serve(ws, channels: list[str], ip: str = "") -> None:
-    """Accept the socket and forward hub messages until the client goes away."""
-    if ip and hub.per_ip[ip] >= cfg.WS_MAX_PER_IP:
+async def serve(ws, kind: str, key: int, ip: str = "") -> None:
+    """Accept the socket and report order changes until the client goes away. kind: "venue" | "user"."""
+    if ip and _per_ip[ip] >= cfg.WS_MAX_PER_IP:
         await ws.close(code=1013)  # too many connections from one address
         return
-    q = hub.subscribe(channels)
-    if q is None:
-        await ws.close(code=1013)  # try again later
-        return
     if ip:
-        hub.per_ip[ip] += 1
-    await ws.accept()
-    getter = asyncio.ensure_future(q.get())
-    receiver = asyncio.ensure_future(ws.receive())
+        _per_ip[ip] += 1
+    watcher = _Watcher(kind, key)
+    receiver = None
     try:
+        known = await asyncio.to_thread(watcher.snapshot)  # before accept: nothing can be missed after it
+        await ws.accept()
+        receiver = asyncio.ensure_future(ws.receive())
+        loop = asyncio.get_running_loop()
+        next_poll = loop.time() + cfg.WS_POLL_SECONDS
         while True:
-            done, _ = await asyncio.wait({getter, receiver}, return_when=asyncio.FIRST_COMPLETED)
-            if receiver in done:
+            done, _ = await asyncio.wait({receiver}, timeout=max(0, next_poll - loop.time()))
+            if done:
                 msg = receiver.result()
                 if msg["type"] == "websocket.disconnect":
                     break
@@ -69,16 +75,25 @@ async def serve(ws, channels: list[str], ip: str = "") -> None:
                 if text == "ping":  # client heartbeat keeps proxies from closing idle sockets
                     await ws.send_text("pong")
                 receiver = asyncio.ensure_future(ws.receive())
-            if getter in done:
-                await ws.send_json(getter.result())
-                getter = asyncio.ensure_future(q.get())
+            if loop.time() >= next_poll:
+                current = await asyncio.to_thread(watcher.snapshot)
+                for message in changes(known, current):
+                    await ws.send_json(message)
+                known = current
+                next_poll = loop.time() + cfg.WS_POLL_SECONDS
     except (WebSocketDisconnect, RuntimeError):
         pass
+    except Exception as exc:  # database trouble: close, the browser reconnects and refreshes
+        log.warning("live updates stopped: %s", type(exc).__name__)
+        try:
+            await ws.close(code=1011)
+        except Exception:
+            pass
     finally:
-        getter.cancel()
-        receiver.cancel()
-        hub.unsubscribe(q)
+        if receiver:
+            receiver.cancel()
+        watcher.close()
         if ip:
-            hub.per_ip[ip] -= 1
-            if hub.per_ip[ip] <= 0:
-                del hub.per_ip[ip]
+            _per_ip[ip] -= 1
+            if _per_ip[ip] <= 0:
+                del _per_ip[ip]

@@ -7,7 +7,6 @@ The free item is always the cheapest marked item in the order (its size included
 A reward is taken when the order is placed and given back if the order does not happen (cancelled, declined,
 expired). A no-show does not give it back. Stamps are added only when the venue marks the order "Picked up",
 so fake orders never earn anything. The welcome gift is per venue: each venue pays for its own new guests."""
-import sqlite3
 
 STAMP_CHOICES = (0, 4, 5, 6, 7, 8, 9, 10, 12, 15)   # 0 = no stamp card
 REWARD_LABELS = {"welcome": "Welcome gift", "stamp": "Loyalty card reward"}
@@ -22,7 +21,7 @@ def enabled(venue) -> bool:
     return bool(venue["welcome_free"] or venue["stamp_every"])
 
 
-def card(conn: sqlite3.Connection, venue_id: int, user_id: int):
+def card(conn, venue_id: int, user_id: int):
     return conn.execute("SELECT * FROM loyalty_cards WHERE venue_id = ? AND user_id = ?",
                         (venue_id, user_id)).fetchone()
 
@@ -72,7 +71,7 @@ def take(conn, venue_id: int, user_id: int, priced: dict) -> None:
     """Inside the order's transaction: use the reward. Raises RewardTaken if it is no longer there."""
     if not priced["reward"]:
         return
-    conn.execute("INSERT OR IGNORE INTO loyalty_cards (venue_id, user_id) VALUES (?, ?)", (venue_id, user_id))
+    conn.execute("INSERT INTO loyalty_cards (venue_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", (venue_id, user_id))
     if priced["reward"] == "welcome":
         cur = conn.execute("UPDATE loyalty_cards SET welcome_used = 1 WHERE venue_id = ? AND user_id = ? AND welcome_used = 0",
                            (venue_id, user_id))
@@ -90,7 +89,7 @@ def on_status(conn, order, new_status: str) -> None:
     venue_id, user_id = order["venue_id"], order["user_id"]
     if new_status == "completed" and order["stamps_earned"] > 0:
         conn.execute("INSERT INTO loyalty_cards (venue_id, user_id, stamps) VALUES (?, ?, ?) "
-                     "ON CONFLICT(venue_id, user_id) DO UPDATE SET stamps = stamps + excluded.stamps",
+                     "ON CONFLICT(venue_id, user_id) DO UPDATE SET stamps = loyalty_cards.stamps + excluded.stamps",
                      (venue_id, user_id, order["stamps_earned"]))
     elif new_status in GIVE_BACK and order["reward"] == "welcome":
         conn.execute("UPDATE loyalty_cards SET welcome_used = 0 WHERE venue_id = ? AND user_id = ?", (venue_id, user_id))

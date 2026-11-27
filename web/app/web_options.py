@@ -49,7 +49,7 @@ def load_groups(conn, venue_id: int) -> list[dict]:
                           "WHERE g.venue_id = ? ORDER BY o.id", (venue_id,)):
         by_id[o["group_id"]]["options"].append(o)
     for link in conn.execute("SELECT ig.* FROM item_option_groups ig JOIN option_groups g ON g.id = ig.group_id "
-                             "WHERE g.venue_id = ?", (venue_id,)):
+                             "WHERE g.venue_id = ? ORDER BY ig.group_id, ig.item_id", (venue_id,)):
         by_id[link["group_id"]]["item_ids"].append(link["item_id"])
     return groups
 
@@ -99,8 +99,8 @@ async def add_group(request, conn):
     if any(normalize(r["name"]) == normalize(name) for r in conn.execute("SELECT name FROM option_groups WHERE venue_id = ?", (venue["id"],))):
         return go(request, "/panel/options", error=f"You already have a group called “{name}”.")
     with conn:
-        gid = conn.execute("INSERT INTO option_groups (venue_id, name, required, multi) VALUES (?, ?, ?, ?)",
-                           (venue["id"], name, required, multi)).lastrowid
+        gid = conn.insert("INSERT INTO option_groups (venue_id, name, required, multi) VALUES (?, ?, ?, ?)",
+                           (venue["id"], name, required, multi))
         _write_options(conn, gid, options)
     return go(request, "/panel/options", msg="Group added. Now attach it to items in the Menu.")
 
@@ -139,7 +139,7 @@ async def _read_upload(request, venue):
     from .security import csrf_valid
     if not csrf_valid(request, form):
         raise HTTPException(403, "Your session expired or the form was invalid. Go back, reload the page and try again.")
-    if not limiter.allow(f"upload:{venue['id']}", cfg.UPLOADS_PER_HOUR, 3600):
+    if not limiter.allow_shared(f"upload:{venue['id']}", cfg.UPLOADS_PER_HOUR, 3600):
         raise HTTPException(429, "Too many uploads. Please try again later.")
     file = form.get("photo")
     data = b""

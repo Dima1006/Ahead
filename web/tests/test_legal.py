@@ -1,7 +1,8 @@
-"""Privacy/Terms pages, consent, data export, CAPTCHA. Run: python3 -I tests/test_legal.py (from web/)."""
+"""Privacy/Terms pages, consent, data export, CAPTCHA. Run: python3 tests/test_legal.py (from web/)."""
 import os, re, sys, tempfile, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "app.db"), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
                   DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40, BASE_URL="https://testserver",
                   COMPANY_NAME="Test Sp. z o.o.")
 from starlette.testclient import TestClient

@@ -108,23 +108,23 @@ DEMO_VENUES = [
 
 
 def _create_venue(conn, venue: dict, password: str) -> None:
-    venue_id = conn.execute(
+    venue_id = conn.insert(
         "INSERT INTO venues (slug, name, city, address, description, email, password_hash, status, prep_minutes) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?)",
         (venue["slug"], venue["name"], "Warszawa", venue["address"], venue["description"],
          venue["email"], hash_password(password), venue["prep_minutes"]),
-    ).lastrowid
+    )
 
     items_by_category = {}
     for category, items in venue["menu"].items():
-        cat_id = conn.execute(
+        cat_id = conn.insert(
             "INSERT INTO categories (venue_id, name) VALUES (?, ?)", (venue_id, category)
-        ).lastrowid
+        )
         for name, prices in items.items():
-            item_id = conn.execute(
+            item_id = conn.insert(
                 "INSERT INTO items (venue_id, category_id, name, loyalty) VALUES (?, ?, ?, ?)",
                 (venue_id, cat_id, name, int(category in venue["loyalty_categories"])),
-            ).lastrowid
+            )
             items_by_category.setdefault(category, []).append(item_id)
             variants = prices.items() if isinstance(prices, dict) else [("", prices)]
             for label, zl in variants:
@@ -134,10 +134,10 @@ def _create_venue(conn, venue: dict, password: str) -> None:
                 )
 
     for group, spec in venue["options"].items():
-        group_id = conn.execute(
+        group_id = conn.insert(
             "INSERT INTO option_groups (venue_id, name, required, multi) VALUES (?, ?, ?, ?)",
             (venue_id, group, int(spec["required"]), int(spec["multi"])),
-        ).lastrowid
+        )
         for name, zl in spec["options"].items():
             conn.execute(
                 "INSERT INTO options (group_id, name, price) VALUES (?, ?, ?)", (group_id, name, zl * 100)
@@ -154,12 +154,13 @@ def seed_demo() -> None:
     try:
         password = os.getenv("DEMO_PASSWORD") or secrets.token_urlsafe(9)
         created = []
-        for venue in DEMO_VENUES:
-            if conn.execute("SELECT 1 FROM venues WHERE email = ?", (venue["email"],)).fetchone():
-                continue
-            _create_venue(conn, venue, password)
-            created.append(venue["email"])
-        conn.commit()
+        with conn:
+            conn.lock(3, 0)   # two instances starting at once must not both create the demo venues
+            for venue in DEMO_VENUES:
+                if conn.execute("SELECT 1 FROM venues WHERE email = ?", (venue["email"],)).fetchone():
+                    continue
+                _create_venue(conn, venue, password)
+                created.append(venue["email"])
         for email in created:
             print(f"[demo] venue login: {email} / {password}", flush=True)
     finally:

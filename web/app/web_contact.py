@@ -17,7 +17,7 @@ async def contact(request, conn):
             "message": clean(str(form.get("message", "")), 2000)}
     if form.get("website"):   # honeypot: only bots fill it. Pretend it worked.
         return go(request, "/contact", msg="Thank you! We will get back to you.")
-    if not limiter.allow(f"contact:{client_ip(request)}", cfg.CONTACT_PER_HOUR, 3600):
+    if not limiter.allow_shared(f"contact:{client_ip(request)}", cfg.CONTACT_PER_HOUR, 3600):
         raise HTTPException(429, "Too many messages. Please try again later.")
     if not await captcha_ok(request, form):
         error = CAPTCHA_ERROR

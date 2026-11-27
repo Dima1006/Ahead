@@ -1,8 +1,8 @@
-"""Add-ons and photos. Run: python3 -I tests/test_features.py   (from the web/ folder)"""
+"""Add-ons and photos. Run: python3 tests/test_features.py   (from the web/ folder)"""
 import io, json, os, re, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-tmp = tempfile.mkdtemp()
-os.environ.update(DATABASE_PATH=os.path.join(tmp, "app.db"), DEMO_SEED="1", DEMO_MODE="1",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", DEMO_MODE="1",
                   ADMIN_PASSWORD="adminpass-123", DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40)
 from PIL import Image
 from starlette.testclient import TestClient
@@ -15,7 +15,8 @@ def csrf(c, path): return re.search(r'name="csrf" value="([^"]+)"', c.get(path).
 def one(q, *a):
     conn = db.connect(); r = conn.execute(q, a).fetchone(); conn.close(); return r
 def sql(q, *a):
-    conn = db.connect(); conn.execute(q, a); conn.commit(); conn.close()
+    conn = db.connect(); conn.execute(q, a); conn.close()
+def stored(n): return one("SELECT 1 FROM photos WHERE name=?", n) is not None
 def png(size=(1200, 900), mode="RGB", fmt="PNG"):
     b = io.BytesIO(); Image.new(mode, size, (200, 120, 60)).save(b, fmt); return b.getvalue()
 
@@ -126,7 +127,7 @@ with TestClient(app, base_url=B) as c:
     r = upload(f"/panel/photo/item/{item['id']}", png())
     assert "Photo saved" in r.text, r.text[:300]
     name = one("SELECT image FROM items WHERE id=?", item["id"])["image"]
-    assert name.endswith(".jpg") and os.path.isfile(os.path.join(tmp, "uploads", name))
+    assert name.endswith(".jpg") and stored(name)
     served = c.get(f"/media/{name}")
     assert served.status_code == 200 and served.headers["content-type"] == "image/jpeg" and "immutable" in served.headers["cache-control"]
     im = Image.open(io.BytesIO(served.content)); assert im.format == "JPEG" and max(im.size) <= 800
@@ -147,9 +148,9 @@ with TestClient(app, base_url=B) as c:
         assert c.get(f"/media/{bad}").status_code == 404, bad
     # replacing deletes the old file; removing clears the column
     name2 = one("SELECT image FROM items WHERE id=?", item["id"])["image"]
-    assert name2 != name and not os.path.exists(os.path.join(tmp, "uploads", name))
+    assert name2 != name and not stored(name)
     assert "Photo removed" in v.post(f"/panel/photo/item/{item['id']}", data={"csrf": t, "remove": "1"}, files={"photo": ("e.png", b"", "image/png")}, follow_redirects=True).text
-    assert one("SELECT image FROM items WHERE id=?", item["id"])["image"] == "" and not os.path.exists(os.path.join(tmp, "uploads", name2))
+    assert one("SELECT image FROM items WHERE id=?", item["id"])["image"] == "" and not stored(name2)
     # another venue cannot touch this item
     o = TestClient(app, base_url=B)
     # venue photo shows on the page and in the list
@@ -161,5 +162,5 @@ with TestClient(app, base_url=B) as c:
     upload(f"/panel/photo/item/{item['id']}", png(), "p.png")
     nm = one("SELECT image FROM items WHERE id=?", item["id"])["image"]
     v.post(f"/panel/menu/item/{item['id']}/delete", data={"csrf": csrf(v, "/panel/menu")})
-    assert not os.path.exists(os.path.join(tmp, "uploads", nm))
+    assert not stored(nm)
 print("OK")

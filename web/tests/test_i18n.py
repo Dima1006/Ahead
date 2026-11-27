@@ -1,7 +1,8 @@
-"""Polish: every page must be fully translated. Run: python3 -I tests/test_i18n.py (from web/). Prints missing texts."""
+"""Polish: every page must be fully translated. Run: python3 tests/test_i18n.py (from web/). Prints missing texts."""
 import os, re, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "app.db"), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
                   DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40, BASE_URL="https://testserver", DEMO_MODE="1",
                   SMTP_HOST="smtp.test", SMTP_USER="u@test", SMTP_PASSWORD="x")
 from starlette.testclient import TestClient

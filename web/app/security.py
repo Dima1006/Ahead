@@ -1,4 +1,6 @@
 """CSRF, rate limiting, client IP, security headers. No business logic here."""
+import asyncio
+import hashlib
 import hmac
 import re
 import secrets
@@ -12,6 +14,7 @@ from starlette.requests import HTTPConnection
 from starlette.responses import PlainTextResponse
 
 from . import config as cfg
+from . import db, tasks
 
 # ---------------------------------------------------------------- CSRF
 
@@ -47,7 +50,8 @@ def csrf_valid(request, form) -> bool:
 # ---------------------------------------------------------------- rate limiting
 
 class RateLimiter:
-    """Sliding window in memory. One process only (see README: run a single worker)."""
+    """Sliding window. allow() counts in memory (per instance): cheap, for general flood protection.
+    allow_shared() counts in the database, so it holds across all instances: for sign-in, codes etc."""
 
     def __init__(self):
         self.hits: dict[str, deque] = defaultdict(deque)
@@ -67,9 +71,31 @@ class RateLimiter:
             q.append(now)
             return True
 
+    def allow_shared(self, key: str, limit: int, window: float) -> bool:
+        digest = hashlib.sha256(key.encode()).hexdigest()   # keys contain e-mail and IP addresses
+        now = time.time()
+        conn = db.connect()
+        try:
+            with conn:
+                conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (digest,))
+                conn.execute("DELETE FROM rate_hits WHERE expires <= ?", (now,))
+                used = conn.execute("SELECT COUNT(*) FROM rate_hits WHERE key = ? AND at > ?",
+                                    (digest, now - window)).fetchone()[0]
+                if used >= limit:
+                    return False
+                conn.execute("INSERT INTO rate_hits (key, at, expires) VALUES (?, ?, ?)", (digest, now, now + window))
+                return True
+        finally:
+            conn.close()
+
     def reset(self):
         with self.lock:
             self.hits.clear()
+        conn = db.connect()
+        try:
+            conn.execute("DELETE FROM rate_hits")
+        finally:
+            conn.close()
 
 
 limiter = RateLimiter()
@@ -79,6 +105,10 @@ def client_ip(request) -> str:
     # TRUST_PROXY = only reachable through Cloudflare: its edge overwrites CF-Connecting-IP, so the value is real.
     # The leftmost X-Forwarded-For entry is NOT used: clients write it themselves, so it would let anyone dodge
     # rate limits. Behind another proxy run uvicorn with --proxy-headers: it puts the real address in request.client.
+    if cfg.SERVERLESS:   # Vercel overwrites these headers, so a client cannot fake them
+        ip = (request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for", "").split(",")[0]).strip()
+        if ip:
+            return ip[:64]
     if cfg.TRUST_PROXY:
         ip = request.headers.get("cf-connecting-ip", "").strip()
         if ip:
@@ -89,6 +119,9 @@ def client_ip(request) -> str:
 # ---------------------------------------------------------------- headers
 
 _HOST_OK = re.compile(r"^[A-Za-z0-9.\-]+(:\d{1,5})?$")
+
+
+_SAME_TIMING = ("/forgot", "/venue/forgot", "/login/code", "/resend-verification")
 
 
 class _BodyTooLarge(Exception):
@@ -108,7 +141,7 @@ class SecurityMiddleware:
         conn = HTTPConnection(scope)
         path, method = scope["path"], scope["method"]
         is_static = path.startswith("/static/")
-        if not is_static and path != "/healthz":
+        if not is_static and path not in ("/healthz", "/telegram/webhook"):
             ip = client_ip(conn)
             limits = [("all", cfg.RATE_ALL)]
             if method == "POST":
@@ -143,10 +176,16 @@ class SecurityMiddleware:
             return message
 
         started = False
+        pending: list = []
+        # These answers must not be faster when no e-mail was sent (that would show which accounts exist).
+        floor = time.monotonic() + 1.5 if cfg.SERVERLESS and method == "POST" and path in _SAME_TIMING else 0
 
         async def send_wrapper(message):
             nonlocal started
             if message["type"] == "http.response.start":
+                if cfg.SERVERLESS:
+                    await tasks.drain(pending)
+                    await asyncio.sleep(max(0, floor - time.monotonic()))
                 started = True
                 h = MutableHeaders(scope=message)
                 h["Content-Security-Policy"] = csp
@@ -163,6 +202,8 @@ class SecurityMiddleware:
                     h["Cache-Control"] = "no-store"  # never cache pages that may hold personal data
             await send(message)
 
+        if cfg.SERVERLESS:
+            tasks.request_tasks.set(pending)
         try:
             await self.app(scope, counting_receive, send_wrapper)
         except _BodyTooLarge:

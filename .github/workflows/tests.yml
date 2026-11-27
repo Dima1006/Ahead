@@ -1,0 +1,35 @@
+name: Tests
+
+# Runs the test scripts against a real PostgreSQL. Uses no secrets.
+on:
+  push:
+    paths: ["web/**", ".github/workflows/tests.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r web/requirements.txt httpx
+      - name: Run every test script
+        working-directory: web
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          for t in tests/test_*.py; do echo "== $t"; python "$t" || exit 1; done

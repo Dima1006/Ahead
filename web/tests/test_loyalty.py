@@ -1,8 +1,9 @@
-"""Loyalty rewards (welcome gift, stamp card). Run: python3 -I tests/test_loyalty.py   (from the web/ folder)
+"""Loyalty rewards (welcome gift, stamp card). Run: python3 tests/test_loyalty.py   (from the web/ folder)
 Works on the order rules directly, so it needs no HTTP client."""
 import json, os, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "app.db"), SECRET_KEY="t" * 40, DEMO_PASSWORD="demo-pass-12345")
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), SECRET_KEY="t" * 40, DEMO_PASSWORD="demo-pass-12345")
 from app import db, loyalty, orders, seed
 
 db.init_db()
@@ -11,7 +12,6 @@ conn = db.connect()
 conn.execute("UPDATE venues SET open_time='00:00', close_time='00:00', prep_minutes=5, welcome_free=1, stamp_every=4 WHERE id=1")
 for email in ("ola@example.pl", "jan@example.pl"):
     conn.execute("INSERT INTO users (email, name, email_verified) VALUES (?, 'Test', 1)", (email,))
-conn.commit()
 
 def venue(): return conn.execute("SELECT * FROM venues WHERE id=1").fetchone()
 def user(email): return conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
@@ -62,16 +62,16 @@ assert orders.transition(conn, 1, o["id"], "declined", "out of milk")[1] is None
 assert card(ola)["stamps"] == 4
 # ... but not after a no-show
 o = order(ola, [("Latte", "Small", 1)])
-conn.execute("UPDATE orders SET arrive_at = datetime('now', '-1 hour') WHERE id = ?", (o["id"],)); conn.commit()
+conn.execute("UPDATE orders SET arrive_at = utc_text('-1 hour') WHERE id = ?", (o["id"],))
 assert orders.transition(conn, 1, o["id"], "no_show")[1] is None
 assert card(ola)["stamps"] == 0
-conn.execute("DELETE FROM venue_customer_flags"); conn.commit()
+conn.execute("DELETE FROM venue_customer_flags")
 
 # expired orders give the reward back too
-conn.execute("UPDATE loyalty_cards SET stamps = 5 WHERE user_id = ?", (ola["id"],)); conn.commit()
+conn.execute("UPDATE loyalty_cards SET stamps = 5 WHERE user_id = ?", (ola["id"],))
 o = order(ola, [("Cappuccino", "Medium", 1)])
 assert o["reward"] == "stamp" and card(ola)["stamps"] == 1
-conn.execute("UPDATE orders SET arrive_at = datetime('now', '-5 hours') WHERE id = ?", (o["id"],)); conn.commit()
+conn.execute("UPDATE orders SET arrive_at = utc_text('-5 hours') WHERE id = ?", (o["id"],))
 assert o["id"] in orders.expire_stale(conn)
 assert card(ola)["stamps"] == 5
 
@@ -86,36 +86,23 @@ o = order(jan, [("Croissant", "", 2)])
 assert o["reward"] == "" and o["total"] == 2 * croissant and card(jan)["welcome_used"] == 0
 
 # switched off: nothing happens
-conn.execute("UPDATE venues SET welcome_free = 0, stamp_every = 0 WHERE id = 1"); conn.commit()
+conn.execute("UPDATE venues SET welcome_free = 0, stamp_every = 0 WHERE id = 1")
 assert orders.cancel_by_customer(conn, jan["id"], o["id"])
 o = order(jan, [("Cappuccino", "Small", 1)])
 assert o["reward"] == "" and o["stamps_earned"] == 0 and o["total"] == small_capp
 
 # a customer who already picked up orders is not "new" when the venue turns the gift on later
-conn.execute("UPDATE venues SET welcome_free = 1 WHERE id = 1"); conn.commit()
+conn.execute("UPDATE venues SET welcome_free = 1 WHERE id = 1")
 pick_up(o)
-conn.execute("DELETE FROM loyalty_cards WHERE user_id = ?", (jan["id"],)); conn.commit()
+conn.execute("DELETE FROM loyalty_cards WHERE user_id = ?", (jan["id"],))
 assert loyalty.available_reward(conn, venue(), jan["id"]) == ""
 
 # hydrate shows the reward label; My account lists the stamp card
-conn.execute("UPDATE venues SET stamp_every = 4 WHERE id = 1"); conn.commit()
+conn.execute("UPDATE venues SET stamp_every = 4 WHERE id = 1")
 h = orders.hydrate(conn, conn.execute("SELECT * FROM orders WHERE reward = 'welcome' LIMIT 1").fetchall())[0]
 assert h["reward_label"] == "Welcome gift"
 cards = loyalty.user_cards(conn, ola["id"])
 assert cards[0]["stamps"] == 5 and cards[0]["ready"]
 
-# the database of the previous version (6) gets the new columns
 conn.close()
-import sqlite3
-old = os.path.join(tempfile.mkdtemp(), "old.db")
-c = sqlite3.connect(old)
-c.executescript(db.SCHEMA.replace("    welcome_free INTEGER NOT NULL DEFAULT 0,  -- loyalty: the first order of each customer here has one item free\n", "")
-                .replace("    stamp_every INTEGER NOT NULL DEFAULT 0,   -- loyalty: every N-th item is free (0 = no stamp card)\n", ""))
-c.execute("PRAGMA user_version = 6"); c.commit(); c.close()
-db.DB_PATH = old
-db.init_db()
-c = db.connect()
-assert {"welcome_free", "stamp_every"} <= {r[1] for r in c.execute("PRAGMA table_info(venues)")}
-assert c.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
-c.close()
 print("loyalty: all checks passed")

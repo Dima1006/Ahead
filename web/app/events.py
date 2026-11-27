@@ -1,10 +1,10 @@
-"""One place that tells everybody an order changed: browsers (WebSocket), Telegram and the customer's e-mail."""
+"""One place that tells others an order changed: Telegram and the customer's e-mail.
+(Open web pages notice by themselves, see realtime.py.)"""
 import logging
 
 from . import config as cfg
 from . import db
 from .mail import send_mail_bg
-from .realtime import hub
 from .tasks import spawn
 
 log = logging.getLogger("coffee")
@@ -22,10 +22,6 @@ async def announce(order_id: int, *, new: bool = False) -> None:
         conn.close()
     if not o:
         return
-    msg = {"type": "order", "order_id": o["id"], "status": o["status"], "new": new}
-    hub.publish(f"venue:{o['venue_id']}", msg)
-    if o["user_id"]:
-        hub.publish(f"user:{o['user_id']}", msg)
     # The customer may have closed the page: tell them by e-mail when it matters.
     if not new and o["email"] and o["email_verified"] and o["status"] in ("ready", "declined"):
         if o["status"] == "ready":

@@ -2,12 +2,11 @@
 import json
 import re
 import secrets
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import config as cfg
-from . import loyalty
+from . import db, loyalty
 from .utils import format_zl, is_open_at, normalize, parse_hhmm
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -30,6 +29,7 @@ ACTION_LABELS = {
     "no_show": "No-show", "declined": "Decline",
 }
 UTC_FMT = "%Y-%m-%d %H:%M:%S"
+LOCK_VENUE, LOCK_USER = 1, 2   # advisory lock namespaces (db.Connection.lock)
 
 
 def utcnow() -> datetime:
@@ -106,7 +106,7 @@ def venue_state(venue, now: datetime | None = None) -> tuple[bool, str]:
 
 # ---------------------------------------------------------------- loading orders
 
-def hydrate(conn: sqlite3.Connection, rows) -> list[dict]:
+def hydrate(conn, rows) -> list[dict]:
     orders = [dict(r) for r in rows]
     if not orders:
         return orders
@@ -141,9 +141,26 @@ def customer_flag(conn, venue_id: int, user_id: int):
 
 
 def create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json: str, submit_key: str = ""):
+    """One transaction that holds a lock on the venue and on the customer, so that the limits, the arrival
+    slots and the loyalty reward are checked and used without another order slipping in between."""
+    try:
+        with conn:
+            conn.lock(LOCK_VENUE, venue["id"])   # always venue first, then customer: no deadlocks
+            conn.lock(LOCK_USER, user["id"])
+            return _create_order(conn, venue, user, arrival_minutes, note, cart_json, submit_key)
+    except loyalty.RewardTaken:   # the transaction was rolled back: nothing was saved
+        return None, "Your reward was just used by another order. Please review your order and send it again."
+    except db.IntegrityError:  # lost a race on submit_key
+        existing = conn.execute("SELECT id FROM orders WHERE submit_key = ? AND user_id = ?",
+                                (submit_key, user["id"])).fetchone()
+        if existing:
+            return existing["id"], None
+        raise
+
+
+def _create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json: str, submit_key: str):
     """Validate everything and store the order. Returns (order_id, None) or (None, message for the customer).
-    Only variant ids and quantities are read from the browser: prices always come from the database.
-    This function never awaits, so in a single-process server the checks and the INSERT cannot interleave."""
+    Only variant ids and quantities are read from the browser: prices always come from the database."""
     now = utcnow()
     submit_key = submit_key[:64] if re.fullmatch(r"[A-Za-z0-9_\-]{8,64}", submit_key or "") else ""
     if submit_key:  # the same form sent twice (double click, reload, retry): answer with the first order
@@ -222,28 +239,20 @@ def create_order(conn, venue, user, arrival_minutes: int, note: str, cart_json: 
     total -= priced["discount"]
     if total > cfg.MAX_ORDER_TOTAL:
         return None, f"An order can be at most {format_zl(cfg.MAX_ORDER_TOTAL)}. Please split it or call the venue."
-    try:
-        with conn:
-            order_id = conn.execute(
-                "INSERT INTO orders (venue_id, user_id, customer_name, phone, arrival_minutes, arrive_at, note, total, submit_key, "
-                "discount, reward, reward_item, reward_cost, stamps_earned) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (venue["id"], user["id"], user["name"], user["phone"], arrival_minutes,
-                 (now + timedelta(minutes=arrival_minutes)).strftime(UTC_FMT), note, total,
-                 submit_key or None, priced["discount"], priced["reward"], priced["reward_item"],
-                 priced["reward_cost"], priced["stamps_earned"])).lastrowid
-            loyalty.take(conn, venue["id"], user["id"], priced)
-            conn.executemany(
-                "INSERT INTO order_items (order_id, name, variant_label, size_label, option_ids, price, qty) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [(order_id, *line) for line in lines_to_save])
-    except loyalty.RewardTaken:   # the transaction was rolled back: nothing was saved
-        return None, "Your reward was just used by another order. Please review your order and send it again."
-    except sqlite3.IntegrityError:  # lost a race on submit_key
-        existing = conn.execute("SELECT id FROM orders WHERE submit_key = ?", (submit_key,)).fetchone()
-        if existing:
-            return existing["id"], None
-        raise
+    with conn:
+        order_id = conn.insert(
+            "INSERT INTO orders (venue_id, user_id, customer_name, phone, arrival_minutes, arrive_at, note, total, submit_key, "
+            "discount, reward, reward_item, reward_cost, stamps_earned) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (venue["id"], user["id"], user["name"], user["phone"], arrival_minutes,
+             (now + timedelta(minutes=arrival_minutes)).strftime(UTC_FMT), note, total,
+             submit_key or None, priced["discount"], priced["reward"], priced["reward_item"],
+             priced["reward_cost"], priced["stamps_earned"]))
+        loyalty.take(conn, venue["id"], user["id"], priced)
+        conn.executemany(
+            "INSERT INTO order_items (order_id, name, variant_label, size_label, option_ids, price, qty) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(order_id, *line) for line in lines_to_save])
     return order_id, None
 
 
@@ -310,7 +319,7 @@ def transition(conn, venue_id: int, order_id: int, new_status: str, reason: str 
     reason = (reason.strip()[:200] or "Declined by the venue") if new_status == "declined" else ""
     with conn:
         cur = conn.execute(
-            "UPDATE orders SET status = ?, decline_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
+            "UPDATE orders SET status = ?, decline_reason = ?, updated_at = utc_text() WHERE id = ? AND status = ?",
             (new_status, reason, order_id, order["status"]))
         if cur.rowcount != 1:  # somebody else (web or Telegram) was faster
             return None, "This order was already updated."
@@ -318,8 +327,8 @@ def transition(conn, venue_id: int, order_id: int, new_status: str, reason: str 
         if new_status == "no_show" and order["user_id"]:
             conn.execute(
                 """INSERT INTO venue_customer_flags (venue_id, user_id, warnings, blocked) VALUES (?, ?, 1, ?)
-                   ON CONFLICT(venue_id, user_id) DO UPDATE SET warnings = warnings + 1,
-                   blocked = CASE WHEN warnings + 1 >= ? THEN 1 ELSE blocked END""",
+                   ON CONFLICT(venue_id, user_id) DO UPDATE SET warnings = venue_customer_flags.warnings + 1,
+                   blocked = CASE WHEN venue_customer_flags.warnings + 1 >= ? THEN 1 ELSE venue_customer_flags.blocked END""",
                 (venue_id, order["user_id"], int(cfg.MAX_NO_SHOWS <= 1), cfg.MAX_NO_SHOWS))
     return conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone(), None
 
@@ -327,7 +336,7 @@ def transition(conn, venue_id: int, order_id: int, new_status: str, reason: str 
 def cancel_by_customer(conn, user_id: int, order_id: int):
     """A customer may cancel while the venue has not started: status 'new'. No warning is given."""
     with conn:
-        cur = conn.execute("UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
+        cur = conn.execute("UPDATE orders SET status = 'cancelled', updated_at = utc_text() "
                            "WHERE id = ? AND user_id = ? AND status = 'new'", (order_id, user_id))
         if cur.rowcount == 1:
             loyalty.on_status(conn, conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone(), "cancelled")
@@ -337,17 +346,14 @@ def cancel_by_customer(conn, user_id: int, order_id: int):
 def expire_stale(conn) -> list[int]:
     """Close orders nobody handled: EXPIRE_AFTER_MIN after the promised arrival. No warning for anyone."""
     cutoff = (utcnow() - timedelta(minutes=cfg.EXPIRE_AFTER_MIN)).strftime(UTC_FMT)
-    stale = conn.execute(f"SELECT * FROM orders WHERE status IN {_ACTIVE_SQL} AND arrive_at < ?", (cutoff,)).fetchall()
-    ids = [r["id"] for r in stale]
-    if ids:
-        with conn:
-            conn.execute(f"UPDATE orders SET status = 'expired', updated_at = CURRENT_TIMESTAMP "
-                         f"WHERE id IN ({','.join('?' * len(ids))}) AND status IN {_ACTIVE_SQL}", ids)
-            for r in stale:
-                loyalty.on_status(conn, r, "expired")
-    conn.execute("DELETE FROM tg_link_codes WHERE expires_at < datetime('now')")
-    conn.commit()
-    return ids
+    with conn:
+        # RETURNING: only the rows this call really closed, so two instances never give a reward back twice.
+        closed = conn.execute(f"UPDATE orders SET status = 'expired', updated_at = utc_text() "
+                              f"WHERE status IN {_ACTIVE_SQL} AND arrive_at < ? RETURNING *", (cutoff,)).fetchall()
+        for r in closed:
+            loyalty.on_status(conn, r, "expired")
+    conn.execute("DELETE FROM tg_link_codes WHERE expires_at < utc_text()")
+    return [r["id"] for r in closed]
 
 
 # ---------------------------------------------------------------- lists and search

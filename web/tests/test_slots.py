@@ -1,7 +1,8 @@
-"""Slot capacity and venue e-mail change. Run: python3 -I tests/test_slots.py (from web/)."""
+"""Slot capacity and venue e-mail change. Run: python3 tests/test_slots.py (from web/)."""
 import os, re, sys, tempfile, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "app.db"), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
                   DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40, BASE_URL="https://testserver", DEMO_MODE="1")
 from starlette.testclient import TestClient
 from app import db, orders
@@ -9,7 +10,7 @@ from app.main import app
 B = "https://testserver"
 def csrf(c, path): return re.search(r'name="csrf" value="([^"]+)"', c.get(path).text).group(1)
 def sql(q, *a):
-    conn = db.connect(); conn.execute(q, a); conn.commit(); conn.close()
+    conn = db.connect(); conn.execute(q, a); conn.close()
 
 with TestClient(app, base_url=B) as v:
     v.post("/venue/login", data={"csrf": csrf(v, "/venue/login"), "email": "demo@woodcoffee.pl", "password": "demo-pass-12345"})
@@ -26,7 +27,7 @@ with TestClient(app, base_url=B) as v:
     conn.execute("INSERT INTO users (email,name,password_hash) VALUES ('z@x.pl','Z','x')")
     uid = conn.execute("SELECT id FROM users WHERE email='z@x.pl'").fetchone()[0]
     conn.execute("INSERT INTO orders (venue_id,user_id,customer_name,phone,arrival_minutes,arrive_at,note,total) VALUES (1,?,?,?,?,?,?,?)",
-                 (uid, "Z", "", 10, at.strftime(orders.UTC_FMT), "", 100)); conn.commit()
+                 (uid, "Z", "", 10, at.strftime(orders.UTC_FMT), "", 100))
     left = dict(orders.arrival_options(venue, conn=conn))
     assert 10 not in left and 5 in left and 20 in left or 10 not in left, left
     conn.close()

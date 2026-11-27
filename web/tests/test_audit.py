@@ -1,8 +1,9 @@
 """Security audit checks: CSRF on every POST, login required, no access to other people's data.
-Run: python3 -I tests/test_audit.py (from web/)."""
+Run: python3 tests/test_audit.py (from web/)."""
 import os, re, sys, tempfile, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.update(DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "app.db"), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
+import pgtest
+os.environ.update(DATABASE_URL=pgtest.fresh_database(), DEMO_SEED="1", ADMIN_PASSWORD="adminpass-123",
                   DEMO_PASSWORD="demo-pass-12345", SECRET_KEY="t" * 40, BASE_URL="https://testserver", DEMO_MODE="1")
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -11,7 +12,7 @@ from app.main import app
 B = "https://testserver"
 def csrf(c, path): return re.search(r'name="csrf" value="([^"]+)"', c.get(path).text).group(1)
 def sql(q, *a):
-    conn = db.connect(); conn.execute(q, a); conn.commit(); conn.close()
+    conn = db.connect(); conn.execute(q, a); conn.close()
 def one(q, *a):
     conn = db.connect(); r = conn.execute(q, a).fetchone(); conn.close(); return r
 
@@ -59,7 +60,7 @@ expect(b.post(f"/order/{oid}/cancel", data={"csrf": csrf(b, "/account")}).status
 expect(json.loads(a.get("/account/export").text)["account"]["email"] == "a@example.pl" and "b@example.pl" not in a.get("/account/export").text, "export leaks")
 # 5. a venue cannot touch another venue's data
 conn = db.connect()
-conn.execute("INSERT INTO venues (slug,name,email,password_hash,status) VALUES ('other','Other','other@example.pl',(SELECT password_hash FROM venues WHERE id=1),'approved')"); conn.commit(); conn.close()
+conn.execute("INSERT INTO venues (slug,name,email,password_hash,status) VALUES ('other','Other','other@example.pl',(SELECT password_hash FROM venues WHERE id=1),'approved')"); conn.close()
 other = TestClient(app, base_url=B); other.__enter__()
 other.post("/venue/login", data={"csrf": csrf(other, "/venue/login"), "email": "other@example.pl", "password": "demo-pass-12345"})
 item = one("SELECT id FROM items WHERE venue_id=1 LIMIT 1")[0]; cat = one("SELECT id FROM categories WHERE venue_id=1 LIMIT 1")[0]

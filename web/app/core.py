@@ -12,7 +12,7 @@ from starlette.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
 from . import config as cfg
-from . import db, google, i18n, orders
+from . import db, google, i18n, maintenance, orders
 from .orders import ACTION_LABELS, ALLOWED, ARRIVAL_CHOICES, STATUS_LABELS
 from .security import csrf_token, csrf_valid
 from .utils import (Busy, format_zl, hash_password_limited, session_fingerprint, verify_password_limited)
@@ -66,6 +66,8 @@ def route(fn):
     """Give the handler its own DB connection and close it afterwards."""
     @wraps(fn)
     async def wrapper(request):
+        if cfg.SERVERLESS:
+            await maintenance.expire_if_due()
         conn = db.connect()
         request.state.conn = conn
         try:

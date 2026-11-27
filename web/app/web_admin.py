@@ -24,7 +24,7 @@ async def admin_login(request, conn):
     if request.method == "GET":
         return render(request, "admin_login.html")
     form = await read_form(request)
-    if not limiter.allow(f"admin-ip:{client_ip(request)}", 5, 600) or not limiter.allow("admin-all", 30, 3600):
+    if not limiter.allow_shared(f"admin-ip:{client_ip(request)}", 5, 600) or not limiter.allow_shared("admin-all", 30, 3600):
         raise HTTPException(429, "Too many attempts. Please wait a few minutes and try again.")
     sent = str(form.get("password", ""))[:256].encode()
     if not hmac.compare_digest(sent, cfg.ADMIN_PASSWORD.encode()):
@@ -56,7 +56,7 @@ async def admin_test_mail(request, conn):
     _enabled()
     await read_form(request)
     require_admin(request)
-    if not limiter.allow("admin-test-mail", 5, 600):
+    if not limiter.allow_shared("admin-test-mail", 5, 600):
         raise HTTPException(429, "Please wait a few minutes before sending another test.")
     if not cfg.ADMIN_EMAIL:
         return go(request, "/admin", error="Set the ADMIN_EMAIL secret first: the test mail is sent to it.")
@@ -116,6 +116,6 @@ async def admin_mail_check(request, conn):
     _enabled()
     await read_form(request)
     require_admin(request)
-    if not limiter.allow("admin-mail-check", 10, 600):
+    if not limiter.allow_shared("admin-mail-check", 10, 600):
         raise HTTPException(429, "Please wait a few minutes before checking again.")
     return go(request, "/admin", msg="Mail check: " + await diagnose())

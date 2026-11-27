@@ -25,7 +25,7 @@ Ahead grew out of the *Wood Coffee* Telegram bot and is aimed at small venues in
 
 ## Tech stack
 
-Python 3.12, Starlette + uvicorn, Jinja2 templates, SQLite, WebSockets, Pillow for photos. Plain JavaScript on the front end, no third-party scripts. Docker image included.
+Python 3.12, Starlette + uvicorn, Jinja2 templates, PostgreSQL, WebSockets, Pillow for photos. Plain JavaScript on the front end, no third-party scripts. Docker image included.
 
 ## Quick start
 
@@ -34,19 +34,26 @@ git clone https://github.com/Dima1006/Ahead.git
 cd Ahead/web
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ahead   # an empty database
 DEMO_SEED=1 DEMO_MODE=1 ADMIN_PASSWORD=change-me-please uvicorn app.main:app --reload
 ```
 
 Open http://127.0.0.1:8000. The admin panel is at `/admin`.
 
-`DEMO_SEED=1` creates three ready venues (a café, a pizzeria and a sushi place) so you can show every kind of menu right away. Always run **one** server process: live updates and rate limits are kept in memory.
+`DEMO_SEED=1` creates three ready venues (a café, a pizzeria and a sushi place) so you can show every kind of menu right away.
+
+A local PostgreSQL in Docker: `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ahead postgres:16`.
+
+### Vercel
+
+See [web/DEPLOY_VERCEL.md](web/DEPLOY_VERCEL.md).
 
 ### Docker
 
 ```bash
 cd web
 docker build -t ahead .
-docker run -p 8000:8000 -v ahead-data:/data \
+docker run -p 8000:8000 -e DATABASE_URL=postgresql://user:password@host:5432/ahead \
   -e BASE_URL=https://your-domain -e SECRET_KEY=<long random string> \
   -e ADMIN_PASSWORD=<long password> ahead
 ```
@@ -63,11 +70,9 @@ Everything is configured with environment variables: `BASE_URL`, `SECRET_KEY`, `
 
 ```bash
 cd web
-pip install httpx
-python3 -I tests/test_smoke.py
-python3 -I tests/test_features.py
-python3 -I tests/test_auth.py
-python3 -I tests/test_loyalty.py
+pip install -r requirements.txt httpx
+export TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres   # may create databases
+for t in tests/test_*.py; do python3 $t || break; done
 ```
 
 ## Project layout

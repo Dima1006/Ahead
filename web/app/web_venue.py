@@ -27,7 +27,7 @@ PREP_CHOICES = (5, 10, 15, 20, 30)
 
 
 def _throttle(key: str, limit: int, window: float) -> None:
-    if not limiter.allow(key, limit, window):
+    if not limiter.allow_shared(key, limit, window):
         raise HTTPException(429, TOO_MANY)
 
 
@@ -70,8 +70,8 @@ async def venue_register(request, conn):
                       form={"venue_name": name, "city": city, "email": email})
     hashed = await hash_async(password)
     with conn:
-        vid = conn.execute("INSERT INTO venues (slug, name, city, email, password_hash) VALUES (?, ?, ?, ?, ?)",
-                           (unique_slug(conn, name), name, city, email, hashed)).lastrowid
+        vid = conn.insert("INSERT INTO venues (slug, name, city, email, password_hash) VALUES (?, ?, ?, ?, ?)",
+                           (unique_slug(conn, name), name, city, email, hashed))
     venue = conn.execute("SELECT * FROM venues WHERE id = ?", (vid,)).fetchone()
     if cfg.ADMIN_EMAIL:
         send_mail_bg(cfg.ADMIN_EMAIL, f"New venue to approve: {name}",
@@ -222,7 +222,7 @@ async def panel_pause(request, conn):
         if minutes == "0":
             conn.execute("UPDATE venues SET paused_until = NULL WHERE id = ?", (venue["id"],))
         else:
-            conn.execute("UPDATE venues SET paused_until = datetime('now', ?) WHERE id = ?",
+            conn.execute("UPDATE venues SET paused_until = utc_text(CAST(? AS interval)) WHERE id = ?",
                          (f"+{int(minutes)} minutes", venue["id"]))
     invalidate_index()
     return go(request, "/panel", msg="Orders resumed." if minutes == "0" else f"Orders paused for {minutes} minutes.")
@@ -272,7 +272,7 @@ async def ws_panel(ws: WebSocket):
     venue = ws_venue(ws) if ws_origin_ok(ws) else None
     if not venue:
         return await ws.close(code=1008)
-    await realtime.serve(ws, [f"venue:{venue['id']}"], client_ip(ws))
+    await realtime.serve(ws, "venue", venue["id"], client_ip(ws))
 
 
 # ---------------------------------------------------------------- menu
@@ -361,8 +361,8 @@ async def add_item(request, conn):
     except ValueError as exc:
         return go(request, anchor, error=f"{name}: {exc}")
     with conn:
-        item_id = conn.execute("INSERT INTO items (venue_id, category_id, name, description) VALUES (?, ?, ?, ?)",
-                               (venue["id"], category_id, name, clean(str(form.get("description", "")), 200))).lastrowid
+        item_id = conn.insert("INSERT INTO items (venue_id, category_id, name, description) VALUES (?, ?, ?, ?)",
+                               (venue["id"], category_id, name, clean(str(form.get("description", "")), 200)))
         _save_variants(conn, item_id, parsed)
         save_item_groups(conn, venue["id"], item_id, form)
     invalidate_index()
@@ -425,7 +425,7 @@ async def delete_item(request, conn):
 @route
 async def panel_settings(request, conn):
     venue = require_venue(request)
-    code = conn.execute("SELECT code FROM tg_link_codes WHERE venue_id = ? AND expires_at > datetime('now')",
+    code = conn.execute("SELECT code FROM tg_link_codes WHERE venue_id = ? AND expires_at > utc_text()",
                         (venue["id"],)).fetchone()
     chats = conn.execute("SELECT * FROM tg_chats WHERE venue_id = ? ORDER BY id", (venue["id"],)).fetchall()
     flags = conn.execute(
@@ -542,7 +542,7 @@ async def telegram_link(request, conn):
     _throttle(f"tg-code:{venue['id']}", 10, 3600)
     with conn:
         conn.execute("DELETE FROM tg_link_codes WHERE venue_id = ?", (venue["id"],))
-        conn.execute("INSERT INTO tg_link_codes (code, venue_id, expires_at) VALUES (?, ?, datetime('now', '+15 minutes'))",
+        conn.execute("INSERT INTO tg_link_codes (code, venue_id, expires_at) VALUES (?, ?, utc_text('15 minutes'))",
                      (orders.new_link_code(), venue["id"]))
     return go(request, "/panel/settings")
 

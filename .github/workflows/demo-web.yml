@@ -9,6 +9,15 @@ jobs:
   demo:
     runs-on: ubuntu-latest
     timeout-minutes: 355
+    services:
+      postgres:            # temporary database, gone when the run ends
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ahead
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -82,6 +91,7 @@ jobs:
       - name: Start the site
         working-directory: web
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ahead
           DEMO_SEED: "1"
           TRUST_PROXY: "1"
           DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}

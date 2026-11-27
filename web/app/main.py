@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 from contextlib import asynccontextmanager
 
@@ -11,7 +12,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
 from . import config as cfg
-from . import db, events, legal, media, orders, telegram, web_account, web_admin, web_contact, web_options, web_public, web_venue
+from . import db, legal, maintenance, media, telegram, web_account, web_admin, web_contact, web_options, web_public, web_venue
 from .core import BASE_DIR, Redirect, http_error, redirect_handler, render, route, server_error
 from .security import SecurityMiddleware
 from .seed import seed_demo
@@ -20,21 +21,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("coffee")
 
 
-def _expire_once() -> list[int]:
-    conn = db.connect()
-    try:
-        return orders.expire_stale(conn)
-    finally:
-        conn.close()
-
-
 async def expire_loop() -> None:
-    """Every minute: close orders nobody handled (and tell whoever is watching them)."""
+    """Every minute: close orders nobody handled (long-running server only)."""
     while True:
         await asyncio.sleep(60)
         try:
-            for order_id in await asyncio.to_thread(_expire_once):
-                await events.announce(order_id)
+            await maintenance.expire()
         except Exception as exc:
             log.error("expire loop failed: %s", type(exc).__name__)
 
@@ -46,14 +38,28 @@ async def lifespan(app):
         seed_demo()
     if not cfg.ADMIN_PASSWORD:
         log.info("ADMIN_PASSWORD is not set: the admin area (/admin) is disabled, new venues cannot be approved.")
-    background = [asyncio.create_task(expire_loop())]
+    background = []
+    if not cfg.SERVERLESS:
+        background.append(asyncio.create_task(expire_loop()))
     if cfg.TELEGRAM_BOT_TOKEN:
-        background.append(asyncio.create_task(telegram.run()))
+        if cfg.TELEGRAM_WEBHOOK_SECRET:
+            await telegram.load_username()
+        elif cfg.SERVERLESS:
+            log.error("Telegram disabled: set TELEGRAM_WEBHOOK_SECRET and run app.set_webhook.")
+        else:
+            background.append(asyncio.create_task(telegram.run()))
     try:
         yield
     finally:
         for task in background:
             task.cancel()
+
+
+async def cron_expire(request):
+    sent = request.headers.get("authorization", "")
+    if not cfg.CRON_SECRET or not hmac.compare_digest(sent.encode(), f"Bearer {cfg.CRON_SECRET}".encode()):
+        return PlainTextResponse("Not found", status_code=404)
+    return PlainTextResponse(f"expired: {await maintenance.expire()}")
 
 
 @route
@@ -69,6 +75,8 @@ G, P, GP = ["GET"], ["POST"], ["GET", "POST"]
 routes = [
     Route("/", web_public.home),
     Route("/healthz", healthz),
+    Route("/cron/expire", cron_expire),
+    Route("/telegram/webhook", telegram.webhook, methods=["POST"]),
     Route("/for-venues", for_venues),
     Route("/v/{slug}", web_public.venue_page),
     Route("/v/{slug}/order", web_public.place_order, methods=P),
