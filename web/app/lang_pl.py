@@ -160,6 +160,11 @@ PL = {
         "Goście wybierają napoje i jedzenie z Twojego menu i podają, kiedy przyjdą. Zamówienie widzisz na żywo na ekranie lub w Telegramie, a wszystko czeka gotowe przy ladzie. Goście płacą w lokalu.",
     "Your menu, your prices": "Twoje menu, Twoje ceny", "Build categories, items and sizes in minutes. Mark something as sold out with one click, and change prices whenever you like.":
         "Stwórz kategorie, pozycje i rozmiary w kilka minut. Oznacz coś jako wyprzedane jednym kliknięciem i zmieniaj ceny, kiedy chcesz.",
+    "Your guests pick drinks and food from your menu and say when they will arrive. You get the order on a screen, and everything is ready at the counter. Guests pay at the venue.":
+        "Goście wybierają napoje i jedzenie z Twojego menu i podają, kiedy przyjdą. Zamówienie widzisz na ekranie, a wszystko czeka gotowe przy ladzie. Goście płacą w lokalu.",
+    "A live board shows what is new, what is being prepared and what is ready, sorted by the time each guest will arrive.":
+        "Tablica na żywo pokazuje, co jest nowe, co się przygotowuje i co jest gotowe, według godziny przybycia gości.",
+    "Add your address and menu.": "Dodaj adres i menu.",
     "Orders in real time": "Zamówienia na żywo", "A live board shows what is new, what is being prepared and what is ready, sorted by the time each guest will arrive. Add Telegram and manage the same orders from your phone.":
         "Tablica na żywo pokazuje, co jest nowe, co się przygotowuje i co jest gotowe, według godziny przybycia gości. Dodaj Telegram i zarządzaj tymi samymi zamówieniami z telefonu.",
     "You stay in control": "Ty masz kontrolę", "Set opening hours, the minimum preparation time and how many orders you accept at once. Pause for 15 minutes when you are swamped. Customers who do not show up get a warning.":

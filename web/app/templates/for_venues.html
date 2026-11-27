@@ -3,7 +3,7 @@
 {% block content %}
 <section class="hero">
   <h1>Orders that arrive<br>before the guest does.</h1>
-  <p class="lead">Your guests pick drinks and food from your menu and say when they will arrive. You get the order live on a screen or in Telegram, and everything is ready at the counter. Guests pay at the venue.</p>
+  <p class="lead">{% if telegram_enabled %}Your guests pick drinks and food from your menu and say when they will arrive. You get the order live on a screen or in Telegram, and everything is ready at the counter. Guests pay at the venue.{% else %}Your guests pick drinks and food from your menu and say when they will arrive. You get the order on a screen, and everything is ready at the counter. Guests pay at the venue.{% endif %}</p>
   <p><a class="btn" href="/venue/register">Register your venue</a> <a class="btn ghost" href="/venue/login">Venue login</a></p>
 </section>
 
@@ -14,7 +14,7 @@
   </section>
   <section>
     <h2>Orders in real time</h2>
-    <p>A live board shows what is new, what is being prepared and what is ready, sorted by the time each guest will arrive. Add Telegram and manage the same orders from your phone.</p>
+    <p>{% if telegram_enabled %}A live board shows what is new, what is being prepared and what is ready, sorted by the time each guest will arrive. Add Telegram and manage the same orders from your phone.{% else %}A live board shows what is new, what is being prepared and what is ready, sorted by the time each guest will arrive.{% endif %}</p>
   </section>
   <section>
     <h2>You stay in control</h2>
@@ -25,7 +25,7 @@
 <h2 class="gap">How it works</h2>
 <ol class="how">
   <li><strong>Register.</strong> Create a venue account. We check every new venue before it is listed.</li>
-  <li><strong>Set up.</strong> Add your address and menu, and optionally connect Telegram.</li>
+  <li><strong>Set up.</strong> {% if telegram_enabled %}Add your address and menu, and optionally connect Telegram.{% else %}Add your address and menu.{% endif %}</li>
   <li><strong>Get orders.</strong> Guests find you in search, order ahead and pick up without waiting.</li>
 </ol>
 <p><a class="btn" href="/venue/register">Get started</a></p>
